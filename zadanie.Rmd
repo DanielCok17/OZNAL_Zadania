@@ -5,6 +5,7 @@ output: html_document
 
 ---
 Ako dataset sme zvolili štatistiky hráčov z NHL, ktorý je dostupný [tu](https://www.kaggle.com/datasets/alexbenzik/nhl-players-statistics?resource=download&select=NHL_Players_Statistics.csv).
+Dataset obsahuje dáta o hráčoch NHL z viacerých sezón
 
 # Načítanie knižníc
 ```{r}
@@ -38,25 +39,37 @@ colnames(data) <- new_colnames
 colnames(data) # Nové mená stĺpcov
 ```
 
-Stĺpec `date_of_birth` rozdelíme na 3 stĺpce `Year`, `Month` a `Day` nakoľko to boli 3 hodnoty v jednej bunke.
+Stĺpec `date_of_birth` rozdelíme na 3 stĺpce `Year`, `Month` a `Day` nakoľko to boli 3 hodnoty v jednej bunke (zachovanie princípu tidy dát).
 ```{r}
 data %<>% separate("date_of_birth", into = c("Year", "Month", "Day"), sep = "-")
 ```
 
-Stĺpec `place_of_birth` rozdelíme na 2 stĺpce `city` a `state` nakoľko to boli 2 hodnoty v jednej bunke. Ak mal hráč iba mesto, tak `state` bude automaticky `NA`.
+Stĺpec `place_of_birth` rozdelíme na 2 stĺpce `city` a `state` nakoľko to boli 2 hodnoty v jednej bunke (zachovanie princípu tidy dát). Ak mal hráč iba mesto, tak `state` bude automaticky `NA`.
 ```{r}
 data %<>% separate("place_of_birth", into = c("city", "state"), sep = ",")
 ```
 
-Odstránenie apostrofov z hodnôt v stĺpci `season`.
+Odstránenie apostrofov z hodnôt v stĺpci `season`. Dáta v tomto sĺpci boli formátované ako '<číslo>-'<číslo>. Apostrofy nám prišli zbytočné a tak sme ich odstránili pre lepšiu čitateľnosť.
 ```{r}
 data$season <- gsub("'", "", data$season) # Funkcia gsub funguje podobne ako sub ale nahradí všetky výskyty
 ```
 
-Odstránenie invalid values zo sĺpcov `game_tying_goals`, `number`. Nahradíme ich za `0`.
+Odstránenie invalid values zo sĺpcov nakoľko pri analýze datasetu sme objavili, že niektoré bunky v daných sĺpcoch obsahujú `Invalid Number`. Nahradíme ich za `0`.
 ```{r}
 data$game_tying_goals[is.na(data$game_tying_goals)] <- 0
 data$number[is.na(data$number)] <- 0
+data$goals[is.na(data$goals)] <- 0
+data$assists[is.na(data$assists)] <- 0
+data$points[is.na(data$points)] <- 0
+data$plus_minus_ratings[is.na(data$plus_minus_ratings)] <- 0
+data$penalty_minutes[is.na(data$penalty_minutes)] <- 0
+data$shots_on_goal[is.na(data$shots_on_goal)] <- 0
+data$shooting_percentage[is.na(data$shooting_percentage)] <- 0
+data$power_play_goals[is.na(data$power_play_goals)] <- 0
+data$power_play_assists[is.na(data$power_play_assists)] <- 0
+data$short_goals[is.na(data$short_goals)] <- 0
+data$short_assists[is.na(data$short_assists)] <- 0
+data$game_winning_goals[is.na(data$game_winning_goals)] <- 0
 ```
 
 Pridelenie role podľa pozície hráča.
@@ -85,25 +98,45 @@ view(data)
 # Lineárna regresia
 Ako prvé sme si vybrali niektoré sĺpce z datasetu a použili funkciu plot na vykreslenie grafov.
 Ako závislú (dependent) premennú sme si zvolili `goals` a ako nezávislé (independent) premenné sme si zvolili `shots_on_goal`, `shooting_percentage`, `power_play_goals`.
+Vychádzali sme z výstupu príkazu `plot` ale aj logického odhadu, že tieto premenné by mohli mať vplyv na počet gólov.
 - `goals` - počet gólov
 - `shots_on_goal` - počet striel na bránu
 - `shooting_percentage` - percentuálna úspešnosť striel
 - `power_play_goals` - počet gólov v presilovkách
 ```{r}
-selected_data <- data %>% select(goals, shots_on_goal, shooting_percentage, power_play_goals, time_on_ice_per_game)
+selected_data <- data %>% select(goals, shots_on_goal, shooting_percentage, power_play_goals)
 plot(selected_data)
+#boxplot(selected_data)
 ```
 
-Následne sme si rozdelili dáta na trénovacie a testovacie a vytvorili model lineárnej regresie.
-Budeme uvažovať iba ofenzívnych hráčov.
+Hypotézy:
+- H_0 - Strely na bránu majú pozitívny vplyv na počet gólov
+- H_1 - Percentuálna úspešnosť striel má pozitívny vplyv na počet gólov
+
+Pri lineárnej regresii budeme uvažovať ofenzívnych a defenzívnych hráčov, nakoľko v reálnych hokejových zápasoch často skóruju obe tieto skupiny.
+Brankárov brať do úvahy nebudeme. Preto sme si najprv vyfiltrovali dáta pomocou funkcie `filter` a vybrali iba ofenzívnych a defenzívnych hráčov podľa sĺpcu `role`, ktorý sme si vyššie vytvorili.
+Následne sme si rozdelili dáta na trénovacie a testovacie v pomere 7:3 a následne sme vytvorili lineárny model pomocou funkcie `lm`.
 ```{r}
-filtered_data <- data %>% filter(role == "offensive")
+# Filter na offensive a defensive
+filtered_data <- data %>% filter(role == "offensive" | role == "defensive")
 
 sample <- sample(c(TRUE, FALSE), nrow(filtered_data), replace=TRUE, prob=c(0.7,0.3))
 train <- filtered_data[sample, ]
 test <- filtered_data[!sample, ]
 
-# TODO: Popisat interpretaciu modelu, vypocitat RMSE atd. interpretovat, pouzit testovacie data, roc krivka
-model <- lm(goals ~ shots_on_goal + shooting_percentage + power_play_goals, data = train)
+model <- lm(goals ~ shots_on_goal + shooting_percentage, data = train)
 summary(model)
 ```
+
+Interpretácia modelu:
+
+* **Residuals** - Reziduály, ktoré nám udávajú rozdiel medzi skutočnými hodnotami závislej premennej a hodnotami modelu - chyba modelu ~ 0.027 (median)
+* **Coefficients** - Koeficienty
+    - **Incercept** - Hodnota y, keď x je rovné 0. Čiže ak hráč nemá žiadne striely na bránu a jeho percentuálna úspešnosť striel je 0, tak stále môžme očakávať priemerne -3.13 gólov (v reálnom živote to bude 0).
+    - **shots_on_goal** - Pri zvýšení počtu striel na bránu o 1, očakávame zvýšenie počtu gólov o 0.1056 s chybou priemerne (0.0005).
+    - **shooting_percentage** - Pri zvýšení percentuálnej úspešnosti striel o 1%, očakávame zvýšenie počtu gólov o 0.2998 s chybou priemerne (0.00049).
+    - **P values** - P hodnoty, ktoré nám hovoria, či je daný koeficient štatisticky významný. V našom prípade sú oba koeficienty štatisticky významné (<0.05) a teda hypotézy H_0 a H_1 nezamietame resp. prijímame.
+* **Residual standard error** - Štandardná odchýlka reziduálov - 4.093
+* **Multiple R squared** - Vyjadruje ako dobre sa model prispôsobuje dátam. Čím bližšie k 1 tým lepšie. V našom prípade 0.807.
+
+# TODO: vypocitat RMSE atd. interpretovat, pouzit testovacie data, roc krivka
