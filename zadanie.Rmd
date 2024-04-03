@@ -36,32 +36,74 @@ new_colnames <- c("player_name", "date_of_birth", "season_year", "season", "team
 colnames(data) <- new_colnames
 
 colnames(data) # Nové mená stĺpcov
-view(data)
 ```
 
 Stĺpec `date_of_birth` rozdelíme na 3 stĺpce `Year`, `Month` a `Day` nakoľko to boli 3 hodnoty v jednej bunke.
 ```{r}
 data %<>% separate("date_of_birth", into = c("Year", "Month", "Day"), sep = "-")
-view(data)
 ```
 
 Stĺpec `place_of_birth` rozdelíme na 2 stĺpce `city` a `state` nakoľko to boli 2 hodnoty v jednej bunke. Ak mal hráč iba mesto, tak `state` bude automaticky `NA`.
 ```{r}
 data %<>% separate("place_of_birth", into = c("city", "state"), sep = ",")
-view(data)
 ```
 
 Odstránenie apostrofov z hodnôt v stĺpci `season`.
 ```{r}
 data$season <- gsub("'", "", data$season) # Funkcia gsub funguje podobne ako sub ale nahradí všetky výskyty
-view(data)
 ```
 
 Odstránenie invalid values zo sĺpcov `game_tying_goals`, `number`. Nahradíme ich za `0`.
 ```{r}
 data$game_tying_goals[is.na(data$game_tying_goals)] <- 0
 data$number[is.na(data$number)] <- 0
+```
+
+Pridelenie role podľa pozície hráča.
+- Za ofenzívnych hráčov budeme považovať hráčov na pozíciách `Right_wing`, `Left_wing`, `Center` a `Forward`.
+- Za defenzívnych hráčov budeme považovať hráčov na pozíciách `Defence`.
+- Brankárov budeme považovať za brankárov (`Goaltender`).
+```{r}
+# Získame unikátne hodnoty z pozícií hráčov
+unique(data$position)
+
+data %<>% mutate(
+  role = case_when(
+    position %like% "Right_wing|Left_wing|Center|Forward" ~ "offensive",
+    position %like% "Defence" ~ "defensive",
+    position %like% "Goaltender" ~ "goalie",
+    .default = "goalie"
+  )
+)
+```
+
+Zobrazenie dát po úprave.
+```{r}
 view(data)
 ```
 
 # Lineárna regresia
+Ako prvé sme si vybrali niektoré sĺpce z datasetu a použili funkciu plot na vykreslenie grafov, aby sme vedeli vybrať premenné na lineárnu regresiu.
+```{r}
+#selected_data <- data %>% select(games_played, goals, assists, saves, points, shots_on_goal, wins, losses, height, age, weight)
+#plot(selected_data)
+
+# Z grafov sme vybrali premenné points, assists, goals, shots_on_goal, teraz si vykreslíme iba ich.
+selected_data <- data %>% select(points, assists, goals, shots_on_goal)
+plot(selected_data)
+boxplot(selected_data)
+```
+
+Následne sme si rozdelili dáta na trénovacie a testovacie a vytvorili model lineárnej regresie.
+Budeme uvažovať iba ofenzívnych hráčov.
+```{r}
+filtered_data <- data %>% filter(role == "offensive")
+
+sample <- sample(c(TRUE, FALSE), nrow(filtered_data), replace=TRUE, prob=c(0.7,0.3))
+train <- filtered_data[sample, ]
+test <- filtered_data[!sample, ]
+
+# TODO: Toto pozriet, ake premenne realne pouzit lebo R-squared je 1 co je divne
+model <- lm(goals ~ assists + points + height, data = train)
+summary(model)
+```
