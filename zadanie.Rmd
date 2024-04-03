@@ -1,29 +1,67 @@
 ---
-title: "zadanie"
+title: "OZNAL - zadanie 1"
+author: "Daniel Cok, Jakub Abrahoim"
 output: html_document
-date: "2024-03-27"
+
 ---
+Ako dataset sme zvolili štatistiky hráčov z NHL, ktorý je dostupný [tu](https://www.kaggle.com/datasets/alexbenzik/nhl-players-statistics?resource=download&select=NHL_Players_Statistics.csv).
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# Načítanie knižníc
+```{r}
+library(tidyverse)
+library(magrittr)
+library(data.table) # Pre %like% operátor
+library(caret) # Pre confusionMatrix
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+# Načítanie dát
+```{r}
+getwd()
+setwd("/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania") # Nastavenie priečinku
+data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
+data
+view(data)
 ```
 
-## Including Plots
+# Úprava dát
+Ako prvé sme upravili názvy stĺpcov, aby boli konzistentné nakoľko niektoré boli all caps a niektoré nie. Taktiež sme niektoré premenovali, aby boli jasnejšie.
+```{r}
+colnames(data) # Pôvodné mená stĺpcov
 
-You can also embed plots, for example:
+new_colnames <- c("player_name", "date_of_birth", "season_year", "season", "team", "games_played", "goals", "assists", "points", "plus_minus_ratings", "penalty_minutes",
+                "shots_on_goal", "shooting_percentage", "power_play_goals", "power_play_assists", "short_goals", "short_assists", "game_winning_goals", "game_tying_goals",
+                "time_on_ice_per_game", "production", "number", "games_started", "wins", "losses", "ties", "overtime_losses", "goals_against", "goals_against_average", "shots_against", "saves",
+                "save_percentage", "shutouts", "position", "height", "weight", "bmi", "place_of_birth", "age", "experience")
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+colnames(data) <- new_colnames
+
+colnames(data) # Nové mená stĺpcov
+view(data)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Stĺpec `date_of_birth` rozdelíme na 3 stĺpce `Year`, `Month` a `Day` nakoľko to boli 3 hodnoty v jednej bunke.
+```{r}
+data %<>% separate("date_of_birth", into = c("Year", "Month", "Day"), sep = "-")
+view(data)
+```
+
+Stĺpec `place_of_birth` rozdelíme na 2 stĺpce `city` a `state` nakoľko to boli 2 hodnoty v jednej bunke. Ak mal hráč iba mesto, tak `state` bude automaticky `NA`.
+```{r}
+data %<>% separate("place_of_birth", into = c("city", "state"), sep = ",")
+view(data)
+```
+
+Odstránenie apostrofov z hodnôt v stĺpci `season`.
+```{r}
+data$season <- gsub("'", "", data$season) # Funkcia gsub funguje podobne ako sub ale nahradí všetky výskyty
+view(data)
+```
+
+Odstránenie invalid values zo sĺpcov `game_tying_goals`, `number`. Nahradíme ich za `0`.
+```{r}
+data$game_tying_goals[is.na(data$game_tying_goals)] <- 0
+data$number[is.na(data$number)] <- 0
+view(data)
+```
+
+# Lineárna regresia
