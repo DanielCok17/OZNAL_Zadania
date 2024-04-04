@@ -97,12 +97,11 @@ view(data)
 
 # Lineárna regresia
 Ako prvé sme si vybrali niektoré sĺpce z datasetu a použili funkciu plot na vykreslenie grafov.
-Ako závislú (dependent) premennú sme si zvolili `goals` a ako nezávislé (independent) premenné sme si zvolili `shots_on_goal`, `shooting_percentage`, `power_play_goals`.
+Ako závislú (dependent) premennú sme si zvolili `goals` a ako nezávislé (independent) premenné sme si zvolili `shots_on_goal`, `shooting_percentage`.
 Vychádzali sme z výstupu príkazu `plot` ale aj logického odhadu, že tieto premenné by mohli mať vplyv na počet gólov.
 - `goals` - počet gólov
 - `shots_on_goal` - počet striel na bránu
 - `shooting_percentage` - percentuálna úspešnosť striel
-- `power_play_goals` - počet gólov v presilovkách
 ```{r}
 selected_data <- data %>% select(goals, shots_on_goal, shooting_percentage, power_play_goals)
 plot(selected_data)
@@ -130,7 +129,7 @@ summary(model)
 
 Interpretácia modelu:
 
-* **Residuals** - Reziduály, ktoré nám udávajú rozdiel medzi skutočnými hodnotami závislej premennej a hodnotami modelu - chyba modelu ~ 0.027 (median)
+* **Residuals** - Reziduály, ktoré nám udávajú rozdiel medzi skutočnými hodnotami závislej premennej a hodnotami modelu -  median - 0.027
 * **Coefficients** - Koeficienty
     - **Incercept** - Hodnota y, keď x je rovné 0. Čiže ak hráč nemá žiadne striely na bránu a jeho percentuálna úspešnosť striel je 0, tak stále môžme očakávať priemerne -3.13 gólov (v reálnom živote to bude 0).
     - **shots_on_goal** - Pri zvýšení počtu striel na bránu o 1, očakávame zvýšenie počtu gólov o 0.1056 s chybou priemerne (0.0005).
@@ -139,4 +138,33 @@ Interpretácia modelu:
 * **Residual standard error** - Štandardná odchýlka reziduálov - 4.093
 * **Multiple R squared** - Vyjadruje ako dobre sa model prispôsobuje dátam. Čím bližšie k 1 tým lepšie. V našom prípade 0.807.
 
-# TODO: vypocitat RMSE atd. interpretovat, pouzit testovacie data, roc krivka
+Reziduály:
+
+Vykreslenie reziduálov pomocou funkcie `plot`.
+```{r}
+par(mfrow = c(1,3)) # Vytvorí grid 1x3
+plot(model, which = c(1,2,5))
+```
+* Prvý graf nám ukazuje reziduály (os x) a predikované hodnoty (fitted values)
+* Druhý graf nám ukazuje normálny Q-Q graf, ktorý nám ukazuje, či sú reziduály normálne distribuované - v našom prípade to nie je úplne ideálna distribúcia
+* Tretí graf nám ukazuje reziduály vs leverage - zobrazuje nám outliery a high leverage points. V prípade, že by sme high leverage points z datasetu odstránili tak by to značne ovlypnilo koeficienty.
+
+Výpočet RSS (residual sum of squares) a RMSE (root mean squared error).
+* RSS - Suma/súčet druhej mocniny vzdialenosti medzi skutočnými hodnotami a predikovanými hodnotami. Čím nižšie RSS tým lepší model.
+* RMSE - Odmocnina priemeru druhej mocniny residuálov. Priemerný rozdiel (chyba) medzi skutočnými hodnotami a predikovanými hodnotami. Čím nižšie RMSE tým lepší model.
+```{r}
+# Pre trénovacie dáta
+residuals <- model$residuals
+RSS <- sum(residuals^2)
+RSS
+RMSE <- sqrt(mean(residuals^2))
+RMSE
+
+# Pre testovacie dáta
+predictions <- predict(model, test)
+residuals_test <- test$goals - predictions
+#RSS_test <- sum(residuals_test^2)
+#RSS_test
+RMSE_test <- RMSE(predictions, test$goals)
+RMSE_test
+```
