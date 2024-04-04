@@ -1,0 +1,291 @@
+---
+title: "OZNAL - zadanie 1"
+author: "Daniel Cok, Jakub Abrahoim"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+Ako dataset sme zvolili štatistiky hráčov z NHL, ktorý je dostupný [tu](https://www.kaggle.com/datasets/alexbenzik/nhl-players-statistics?resource=download&select=NHL_Players_Statistics.csv).
+Dataset obsahuje dáta o hráčoch NHL z viacerých sezón
+
+# Načítanie knižníc
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(data.table) # Pre %like% operátor
+library(caret) # Pre confusionMatrix
+```
+
+# Načítanie dát
+
+```{r}
+getwd()
+setwd("/Users/danielcok/xcok/4.semester/OZNAL/Zadanie") # 
+data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
+data
+view(data)
+```
+
+# Úprava dát
+
+Ako prvé sme upravili názvy stĺpcov, aby boli konzistentné nakoľko niektoré boli all caps a niektoré nie.
+Taktiež sme niektoré premenovali, aby boli jasnejšie.
+
+```{r}
+colnames(data) # Pôvodné mená stĺpcov
+
+new_colnames <- c("player_name", "date_of_birth", "season_year", "season", "team", "games_played", "goals", "assists", "points", "plus_minus_ratings", "penalty_minutes",
+                "shots_on_goal", "shooting_percentage", "power_play_goals", "power_play_assists", "short_goals", "short_assists", "game_winning_goals", "game_tying_goals",
+                "time_on_ice_per_game", "production", "number", "games_started", "wins", "losses", "ties", "overtime_losses", "goals_against", "goals_against_average", "shots_against", "saves",
+                "save_percentage", "shutouts", "position", "height", "weight", "bmi", "place_of_birth", "age", "experience")
+
+colnames(data) <- new_colnames
+
+colnames(data) # Nové mená stĺpcov
+```
+
+Stĺpec `date_of_birth` rozdelíme na 3 stĺpce `Year`, `Month` a `Day` nakoľko to boli 3 hodnoty v jednej bunke (zachovanie princípu tidy dát).
+
+```{r}
+data %<>% separate("date_of_birth", into = c("Year", "Month", "Day"), sep = "-")
+```
+
+Stĺpec `place_of_birth` rozdelíme na 2 stĺpce `city` a `state` nakoľko to boli 2 hodnoty v jednej bunke (zachovanie princípu tidy dát).
+Ak mal hráč iba mesto, tak `state` bude automaticky `NA`.
+
+```{r}
+data %<>% separate("place_of_birth", into = c("city", "state"), sep = ",")
+```
+
+Odstránenie apostrofov z hodnôt v stĺpci `season`.
+Dáta v tomto sĺpci boli formátované ako '<číslo>-'<číslo>.
+Apostrofy nám prišli zbytočné a tak sme ich odstránili pre lepšiu čitateľnosť.
+
+```{r}
+data$season <- gsub("'", "", data$season) # Funkcia gsub funguje podobne ako sub ale nahradí všetky výskyty
+```
+
+Odstránenie invalid values zo sĺpcov nakoľko pri analýze datasetu sme objavili, že niektoré bunky v daných sĺpcoch obsahujú `Invalid Number`.
+Nahradíme ich za `0`.
+
+```{r}
+data$game_tying_goals[is.na(data$game_tying_goals)] <- 0
+data$number[is.na(data$number)] <- 0
+data$goals[is.na(data$goals)] <- 0
+data$assists[is.na(data$assists)] <- 0
+data$points[is.na(data$points)] <- 0
+data$plus_minus_ratings[is.na(data$plus_minus_ratings)] <- 0
+data$penalty_minutes[is.na(data$penalty_minutes)] <- 0
+data$shots_on_goal[is.na(data$shots_on_goal)] <- 0
+data$shooting_percentage[is.na(data$shooting_percentage)] <- 0
+data$power_play_goals[is.na(data$power_play_goals)] <- 0
+data$power_play_assists[is.na(data$power_play_assists)] <- 0
+data$short_goals[is.na(data$short_goals)] <- 0
+data$short_assists[is.na(data$short_assists)] <- 0
+data$game_winning_goals[is.na(data$game_winning_goals)] <- 0
+```
+
+Pridelenie role podľa pozície hráča.
+- Za ofenzívnych hráčov budeme považovať hráčov na pozíciách `Right_wing`, `Left_wing`, `Center` a `Forward`.
+- Za defenzívnych hráčov budeme považovať hráčov na pozíciách `Defence`.
+- Brankárov budeme považovať za brankárov (`Goaltender`).
+
+```{r}
+# Získame unikátne hodnoty z pozícií hráčov
+unique(data$position)
+data %<>% mutate(
+  role = case_when(
+    position %like% "Right_wing|Left_wing|Center|Forward" ~ "offensive",
+    position %like% "Defence" ~ "defensive",
+    position %like% "Goaltender" ~ "goalie",
+    .default = "goalie"
+  )
+)
+```
+
+Zobrazenie dát po úprave.
+
+```{r}
+view(data)
+```
+
+# Lineárna regresia
+
+Ako prvé sme si vybrali niektoré sĺpce z datasetu a použili funkciu plot na vykreslenie grafov.
+Ako závislú (dependent) premennú sme si zvolili `goals` a ako nezávislé (independent) premenné sme si zvolili `shots_on_goal`, `shooting_percentage`.
+Vychádzali sme z výstupu príkazu `plot` ale aj logického odhadu, že tieto premenné by mohli mať vplyv na počet gólov.
+- `goals` - počet gólov - `shots_on_goal` - počet striel na bránu - `shooting_percentage` - percentuálna úspešnosť striel
+
+```{r}
+selected_data <- data %>% select(goals, shots_on_goal, shooting_percentage, power_play_goals)
+plot(selected_data)
+#boxplot(selected_data)
+```
+
+Hypotézy: - H_0 - Strely na bránu majú pozitívny vplyv na počet gólov - H_1 - Percentuálna úspešnosť striel má pozitívny vplyv na počet gólov
+
+Pri lineárnej regresii budeme uvažovať ofenzívnych a defenzívnych hráčov, nakoľko v reálnych hokejových zápasoch často skóruju obe tieto skupiny.
+Brankárov brať do úvahy nebudeme.
+Preto sme si najprv vyfiltrovali dáta pomocou funkcie `filter` a vybrali iba ofenzívnych a defenzívnych hráčov podľa sĺpcu `role`, ktorý sme si vyššie vytvorili.
+Následne sme si rozdelili dáta na trénovacie a testovacie v pomere 7:3 a následne sme vytvorili lineárny model pomocou funkcie `lm`.
+
+```{r}
+# Filter na offensive a defensive
+filtered_data <- data %>% filter(role == "offensive" | role == "defensive")
+
+sample <- sample(c(TRUE, FALSE), nrow(filtered_data), replace=TRUE, prob=c(0.7,0.3))
+train <- filtered_data[sample, ]
+test <- filtered_data[!sample, ]
+
+model <- lm(goals ~ shots_on_goal + shooting_percentage, data = train)
+summary(model)
+```
+
+Interpretácia modelu:
+
+-   **Residuals** - Reziduály, ktoré nám udávajú rozdiel medzi skutočnými hodnotami závislej premennej a hodnotami modelu - median - 0.027
+-   **Coefficients** - Koeficienty
+    -   **Incercept** - Hodnota y, keď x je rovné 0. Čiže ak hráč nemá žiadne striely na bránu a jeho percentuálna úspešnosť striel je 0, tak stále môžme očakávať priemerne -3.13 gólov (v reálnom živote to bude 0).
+    -   **shots_on_goal** - Pri zvýšení počtu striel na bránu o 1, očakávame zvýšenie počtu gólov o 0.1056 s chybou priemerne (0.0005).
+    -   **shooting_percentage** - Pri zvýšení percentuálnej úspešnosti striel o 1%, očakávame zvýšenie počtu gólov o 0.2998 s chybou priemerne (0.00049).
+    -   **P values** - P hodnoty, ktoré nám hovoria, či je daný koeficient štatisticky významný. V našom prípade sú oba koeficienty štatisticky významné (\<0.05) a teda hypotézy H_0 a H_1 nezamietame resp. prijímame.
+-   **Residual standard error** - Štandardná odchýlka reziduálov - 4.093
+-   **Multiple R squared** - Vyjadruje ako dobre sa model prispôsobuje dátam. Čím bližšie k 1 tým lepšie. V našom prípade 0.807.
+
+Reziduály:
+
+Vykreslenie reziduálov pomocou funkcie `plot`.
+
+```{r}
+par(mfrow = c(1,3)) # Vytvorí grid 1x3
+plot(model, which = c(1,2,5))
+```
+
+-   Prvý graf nám ukazuje reziduály (os x) a predikované hodnoty (fitted values)
+-   Druhý graf nám ukazuje normálny Q-Q graf, ktorý nám ukazuje, či sú reziduály normálne distribuované - v našom prípade to nie je úplne ideálna distribúcia
+-   Tretí graf nám ukazuje reziduály vs leverage - zobrazuje nám outliery a high leverage points. V prípade, že by sme high leverage points z datasetu odstránili tak by to značne ovlypnilo koeficienty.
+
+Výpočet RSS (residual sum of squares) a RMSE (root mean squared error).
+\* RSS - Suma/súčet druhej mocniny vzdialenosti medzi skutočnými hodnotami a predikovanými hodnotami.
+Čím nižšie RSS tým lepší model.
+\* RMSE - Odmocnina priemeru druhej mocniny residuálov.
+Priemerný rozdiel (chyba) medzi skutočnými hodnotami a predikovanými hodnotami.
+Čím nižšie RMSE tým lepší model.
+
+```{r}
+# Pre trénovacie dáta
+residuals <- model$residuals
+RSS <- sum(residuals^2)
+RSS
+RMSE <- sqrt(mean(residuals^2))
+RMSE
+
+# Pre testovacie dáta
+predictions <- predict(model, test)
+residuals_test <- test$goals - predictions
+#RSS_test <- sum(residuals_test^2)
+#RSS_test
+RMSE_test <- RMSE(predictions, test$goals)
+RMSE_test
+```
+
+# Logicka regresia
+
+```{r}
+# Vytvorenie stĺpca role_oneHot na základe pozície
+data <- data %>% 
+  mutate(
+    role = case_when(
+      position %like% "Right_wing|Left_wing|Center|Forward" ~ "offensive",
+      TRUE ~ "defensive"
+    ),
+    role_oneHot = if_else(role == "offensive", 1, 0)
+  )
+
+# Pridanie nových príznakov a výber relevantných stĺpcov
+data <- data %>%
+  mutate(
+    points = goals + assists,
+    powerPlayPoints = power_play_goals + power_play_assists
+  ) %>%
+  select(goals, assists, points, penalty_minutes, plus_minus_ratings, powerPlayPoints, time_on_ice_per_game, role_oneHot)
+```
+
+# Hypotézy
+
+-   **H0** : Neexistuje statistiky významný vplyv počtu gólov a asistencií na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
+-   **H1**: Existuje statistiky významný vplyv počtu gólov a asistencií na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
+-   **H2**: Existuje statistiky významný vplyv počtu trestných minút na pravdepodobnosť byť klasifikovaný ako defenzívny hráč.
+-   **H3**: Existuje statistiky významný vplyv plus/minus hodnotenia na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
+
+```{r}
+# Rozdelenie dát na trenovaciu a testovaciu súpravu
+set.seed(123)  
+training_indices <- createDataPartition(data$role_oneHot, p = 0.7, list = FALSE)  
+train_data <- data[training_indices, ]  
+test_data <- data[-training_indices, ]  
+
+```
+
+```{r}
+# Vytvorenie logistického regresného modelu
+model <- glm(role_oneHot ~ ., data = train_data, family = "binomial")  
+```
+
+```{r}
+# Predikcie a hodnotenie
+predictions <- predict(model, test_data, type = "response")  
+predicted_class <- if_else(predictions > 0.5, 1, 0)  
+```
+
+```{r}
+# Confusion matrix
+conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$role_oneHot))
+print(conf_matrix)  
+```
+
+```{r}
+# ROC krivka a výpočet AUC
+roc_response <- roc(response = test_data$role_oneHot, predictor = as.numeric(predictions))
+plot(roc_response)  
+```
+
+```{r}
+# Výpočet a výpis hodnoty AUC (Area Under the Curve) pre ROC krivku
+auc_value <- auc(roc_response)
+print(auc_value)
+```
+
+```{r}
+# Výpis celkovej presnosti modelu
+cm_overall_accuracy <- cm$overall['Accuracy']
+print(paste("Accuracy:", cm_overall_accuracy))
+```
+
+```{r}
+# Výpočet a výpis proporcionálneho rozdelenia tried v testovacej sade
+proportion_of_1 <- sum(cm$table[2,]) / sum(cm$table)
+proportion_of_0 <- sum(cm$table[1,]) / sum(cm$table)
+print(paste("Class proportions are: ", proportion_of_1, proportion_of_0, "for 1 and 0, respectively."))
+```
+
+```{r}
+# Výpočet a výpis presnosti (Precision) predpovedí modelu
+precision <- cm$table[2,2] / (cm$table[2,2] + cm$table[2,1])
+print(paste("Precision:", precision))
+```
+
+```{r}
+# Výpočet a výpis citlivosti (Recall) predpovedí modelu
+recall <- cm$table[2,2] / (cm$table[2,2] + cm$table[1,2])
+print(paste("Recall:", recall))
+```
+
+```{r}
+# Sumarizácia modelu a interpretácia koeficientov
+model_summary <- summary(model)
+print(model_summary)
+```
