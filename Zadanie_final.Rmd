@@ -25,7 +25,7 @@ library(pROC)
 
 ```{r}
 getwd()
-setwd("/Users/danielcok/xcok/4.semester/OZNAL/Zadanie") # 
+setwd('/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania') # 
 data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
 data
 view(data)
@@ -108,6 +108,15 @@ data %<>% mutate(
 )
 ```
 
+```{r}
+# Vytvorenie stĺpca role_oneHot na základe pozície
+data <- data %>% 
+  mutate(
+    role_oneHot = if_else(role == "offensive", 1, 0)
+  )
+
+```
+
 Zobrazenie dát po úprave.
 
 ```{r}
@@ -188,24 +197,14 @@ RMSE
 # Pre testovacie dáta
 predictions <- predict(model, test)
 residuals_test <- test$goals - predictions
-#RSS_test <- sum(residuals_test^2)
-#RSS_test
+RSS_test <- sum(residuals_test^2)
+RSS_test
 RMSE_test <- RMSE(predictions, test$goals)
 RMSE_test
 ```
 
-# Klasifikacia
-
-```{r}
-# Vytvorenie stĺpca role_oneHot na základe pozície
-data <- data %>% 
-  mutate(
-    role_oneHot = if_else(role == "offensive", 1, 0)
-  )
-
-```
-
-# Hypotézy
+# Logistická regresia
+Hypotézy:
 
 -   **H0** : Počet gólov  má pozitivny vplyv na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
 
@@ -259,8 +258,6 @@ print(cm)
 
 Model používa počet striel na bránku a percento úspešnosti striel na predpovedanie počtu gólov.
 Všetky koeficienty sú štatisticky významné s p-hodnotami menšími ako 2e-16, čo naznačuje silný štatistický vplyv týchto príznakov na počet gólov.
-Koeficient pre počet striel na bránku (shots_on_goal) je pozitívny, čo znamená, že s vyšším počtom striel na bránku sa očakáva vyšší počet gólov.
-Koeficient pre percento úspešnosti striel (shooting_percentage) je tiež pozitívny, naznačujúci, že hráči s vyšším percentom úspešnosti striel majú tendenciu skórovať viac gólov.
 Multiple R-squared hodnota 0.8092 ukazuje, že model dobre vysvetľuje variabilitu v počte gólov, čo je považované za veľmi dobré prispôsobenie modelu.
 
 Logistická regresia a Confusion Matrix: Presnosť modelu sa zlepšila na 0.66, čo je lepšie v porovnaní s predchádzajúcim modelom.
