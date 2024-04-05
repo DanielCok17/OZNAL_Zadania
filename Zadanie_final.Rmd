@@ -25,7 +25,7 @@ library(pROC)
 
 ```{r}
 getwd()
-setwd('/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania') # 
+setwd("/Users/danielcok/xcok/4.semester/OZNAL/Zadanie") # Set the correct path to players_22.csv
 data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
 data
 view(data)
@@ -250,7 +250,7 @@ Ak je predpovedaná pravdepodobnosť väčšia ako 0.5, pozorovanie sa klasifiku
 
 ```{r}
 # Confusion matrix
-cm <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$role_oneHot))
+cm <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$role_oneHot), positive =  "1")
 print(cm)  
 ```
 
@@ -260,18 +260,20 @@ Model používa počet striel na bránku a percento úspešnosti striel na predp
 Všetky koeficienty sú štatisticky významné s p-hodnotami menšími ako 2e-16, čo naznačuje silný štatistický vplyv týchto príznakov na počet gólov.
 Multiple R-squared hodnota 0.8092 ukazuje, že model dobre vysvetľuje variabilitu v počte gólov, čo je považované za veľmi dobré prispôsobenie modelu.
 
-Logistická regresia a Confusion Matrix: Presnosť modelu sa zlepšila na 0.66, čo je lepšie v porovnaní s predchádzajúcim modelom.
-To znamená, že približne 66% predikcií modelu je správnych.
+Logistická regresia a Confusion Matrix: Presnosť modelu je  0.69, to znamená, že približne 69% predikcií modelu je správnych.
 Hodnota Kappa 0.25 naznačuje umiernenú dohodu nad rámec náhody medzi predpovedanými a skutočnými klasifikáciami.
-Senzitivita 0.88 hovorí, že model je celkom dobrý v identifikovaní defenzívnych hráčov ako takých, ale špecifickosť 0.34 ukazuje, že model má menšiu schopnosť správne klasifikovať ofenzívnych hráčov (teda dosť veľký podiel defenzívnych hráčov je nesprávne klasifikovaných ako ofenzívni).
-Balanced Accuracy 0.6410 naznačuje celkovú výkonnosť modelu v rovnováhe medzi senzitivitou a špecifickosťou.
+Senzitivita hovorí, že prevdepodobnost identifikovania ofenzivnych hráčov je 0.29
+
+špecifickosť 0.91 ukazuje, že model má menšiu schopnosť správne klasifikovať nie ofenzívnych hráčov (resp. defenzivnych)
+
+Balanced Accuracy 0.6 naznačuje celkovú výkonnosť modelu v rovnováhe medzi senzitivitou a špecifickosťou.
 Celkovo, na základe výsledkov lineárnej regresie môžeme povedať, že počet striel na bránku a percento úspešnosti striel sú významné príznaky pre predpovedanie počtu gólov.
 Na druhej strane, vylepšený model logistické regresie ukazuje lepšiu presnosť v predpovedaní defenzívnych oproti ofenzívnym hráčom, ale stále existuje priestor pre zlepšenie, najmä v špecifickosti a vyváženej presnosti.
 
-Pravé negatívy (TN): 3921 - Počet prípadov, kde model správne predpovedal negatívnu triedu (napr. defenzívni hráči).
-Falošné pozitívy (FP): 1980 - Počet prípadov, kde model nesprávne predpovedal pozitívnu triedu (napr. hráči, ktorí boli označení ako ofenzívni, ale v skutočnosti boli defenzívni).
-Falošné negatívy (FN): 501 - Počet prípadov, kde model nesprávne predpovedal negatívnu triedu (napr. hráči, ktorí boli označení ako defenzívni, ale boli ofenzívni).
-Pravé pozitívy (TP): 1034 - Počet prípadov, kde model správne predpovedal pozitívnu triedu (napr. ofenzívni hráči).
+* Pravé negatívy (TN): 4763 - Počet prípadov, kde model správne predpovedal negatívnu triedu (napr. defenzívni hráči).
+* Falošné pozitívy (FP): 2119 - Počet prípadov, kde model nesprávne predpovedal pozitívnu triedu (napr. hráči, ktorí boli označení ako ofenzívni, ale v skutočnosti boli defenzívni).
+* Falošné negatívy (FN): 418 - Počet prípadov, kde model nesprávne predpovedal negatívnu triedu (napr. hráči, ktorí boli označení ako defenzívni, ale boli ofenzívni).
+* Pravé pozitívy (TP): 895 - Počet prípadov, kde model správne predpovedal pozitívnu triedu (napr. ofenzívni hráči).
 
 ```{r}
 # ROC krivka a výpočet AUC
