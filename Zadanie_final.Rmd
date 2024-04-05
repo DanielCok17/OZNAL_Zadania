@@ -17,6 +17,8 @@ library(tidyverse)
 library(magrittr)
 library(data.table) # Pre %like% operátor
 library(caret) # Pre confusionMatrix
+library(pROC)
+
 ```
 
 # Načítanie dát
@@ -192,32 +194,22 @@ RMSE_test <- RMSE(predictions, test$goals)
 RMSE_test
 ```
 
-# Logicka regresia
+# Klasifikacia
 
 ```{r}
 # Vytvorenie stĺpca role_oneHot na základe pozície
 data <- data %>% 
   mutate(
-    role = case_when(
-      position %like% "Right_wing|Left_wing|Center|Forward" ~ "offensive",
-      TRUE ~ "defensive"
-    ),
     role_oneHot = if_else(role == "offensive", 1, 0)
   )
 
-# Pridanie nových príznakov a výber relevantných stĺpcov
-data <- data %>%
-  mutate(
-    points = goals + assists,
-    powerPlayPoints = power_play_goals + power_play_assists
-  ) %>%
-  select(goals, assists, points, penalty_minutes, plus_minus_ratings, powerPlayPoints, time_on_ice_per_game, role_oneHot)
 ```
 
 # Hypotézy
 
--   **H0** : Počet gólov a asistencií/trestných minút/plus/minus hodnotení nemá statisticky významný vplyv na pravdepodobnosť byť klasifikovaný ako ofenzívny (alebo defenzívny pre H2) hráč.
--   **H1** : Počet gólov a asistencií/trestných minút/plus/minus hodnotení má statisticky významný vplyv na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
+-   **H0** : Počet gólov  má pozitivny vplyv na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
+
+-   **H1** : Asistencie maju negativny vplyv na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
 
 ```{r}
 # Rozdelenie dát na trenovaciu a testovaciu súpravu
@@ -239,7 +231,7 @@ test_data \<- data[-training_indices, ]: Podobne tento riadok vytvorí testovaci
 
 ```{r}
 # Vytvorenie logistického regresného modelu
-model <- glm(role_oneHot ~ ., data = train_data, family = "binomial")  
+model <- glm(role_oneHot ~ goals + assists , data = train_data, family = "binomial")  
 ```
 
 Funkcia glm (Generalized Linear Model) sa používa na vytvorenie modelu, pričom role_oneHot \~ .
@@ -259,11 +251,11 @@ Ak je predpovedaná pravdepodobnosť väčšia ako 0.5, pozorovanie sa klasifiku
 
 ```{r}
 # Confusion matrix
-conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$role_oneHot))
-print(conf_matrix)  
+cm <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$role_oneHot))
+print(cm)  
 ```
 
-# Lineárna regresia
+## Klasifikacia
 
 Model používa počet striel na bránku a percento úspešnosti striel na predpovedanie počtu gólov.
 Všetky koeficienty sú štatisticky významné s p-hodnotami menšími ako 2e-16, čo naznačuje silný štatistický vplyv týchto príznakov na počet gólov.
@@ -271,18 +263,18 @@ Koeficient pre počet striel na bránku (shots_on_goal) je pozitívny, čo zname
 Koeficient pre percento úspešnosti striel (shooting_percentage) je tiež pozitívny, naznačujúci, že hráči s vyšším percentom úspešnosti striel majú tendenciu skórovať viac gólov.
 Multiple R-squared hodnota 0.8092 ukazuje, že model dobre vysvetľuje variabilitu v počte gólov, čo je považované za veľmi dobré prispôsobenie modelu.
 
-Logistická regresia a Confusion Matrix: Presnosť modelu sa zlepšila na 0.7019, čo je lepšie v porovnaní s predchádzajúcim modelom.
-To znamená, že približne 70% predikcií modelu je správnych.
-Hodnota Kappa 0.3055 naznačuje umiernenú dohodu nad rámec náhody medzi predpovedanými a skutočnými klasifikáciami.
-Senzitivita 0.8713 hovorí, že model je celkom dobrý v identifikovaní defenzívnych hráčov ako takých, ale špecifickosť 0.4107 ukazuje, že model má menšiu schopnosť správne klasifikovať ofenzívnych hráčov (teda dosť veľký podiel defenzívnych hráčov je nesprávne klasifikovaných ako ofenzívni).
+Logistická regresia a Confusion Matrix: Presnosť modelu sa zlepšila na 0.66, čo je lepšie v porovnaní s predchádzajúcim modelom.
+To znamená, že približne 66% predikcií modelu je správnych.
+Hodnota Kappa 0.25 naznačuje umiernenú dohodu nad rámec náhody medzi predpovedanými a skutočnými klasifikáciami.
+Senzitivita 0.88 hovorí, že model je celkom dobrý v identifikovaní defenzívnych hráčov ako takých, ale špecifickosť 0.34 ukazuje, že model má menšiu schopnosť správne klasifikovať ofenzívnych hráčov (teda dosť veľký podiel defenzívnych hráčov je nesprávne klasifikovaných ako ofenzívni).
 Balanced Accuracy 0.6410 naznačuje celkovú výkonnosť modelu v rovnováhe medzi senzitivitou a špecifickosťou.
 Celkovo, na základe výsledkov lineárnej regresie môžeme povedať, že počet striel na bránku a percento úspešnosti striel sú významné príznaky pre predpovedanie počtu gólov.
 Na druhej strane, vylepšený model logistické regresie ukazuje lepšiu presnosť v predpovedaní defenzívnych oproti ofenzívnym hráčom, ale stále existuje priestor pre zlepšenie, najmä v špecifickosti a vyváženej presnosti.
 
-Pravé negatívy (TN): 4514 - Počet prípadov, kde model správne predpovedal negatívnu triedu (napr. defenzívni hráči).
-Falošné pozitívy (FP): 1776 - Počet prípadov, kde model nesprávne predpovedal pozitívnu triedu (napr. hráči, ktorí boli označení ako ofenzívni, ale v skutočnosti boli defenzívni).
-Falošné negatívy (FN): 667 - Počet prípadov, kde model nesprávne predpovedal negatívnu triedu (napr. hráči, ktorí boli označení ako defenzívni, ale boli ofenzívni).
-Pravé pozitívy (TP): 1238 - Počet prípadov, kde model správne predpovedal pozitívnu triedu (napr. ofenzívni hráči).
+Pravé negatívy (TN): 3921 - Počet prípadov, kde model správne predpovedal negatívnu triedu (napr. defenzívni hráči).
+Falošné pozitívy (FP): 1980 - Počet prípadov, kde model nesprávne predpovedal pozitívnu triedu (napr. hráči, ktorí boli označení ako ofenzívni, ale v skutočnosti boli defenzívni).
+Falošné negatívy (FN): 501 - Počet prípadov, kde model nesprávne predpovedal negatívnu triedu (napr. hráči, ktorí boli označení ako defenzívni, ale boli ofenzívni).
+Pravé pozitívy (TP): 1034 - Počet prípadov, kde model správne predpovedal pozitívnu triedu (napr. ofenzívni hráči).
 
 ```{r}
 # ROC krivka a výpočet AUC
@@ -318,8 +310,8 @@ proportion_of_0 <- sum(cm$table[1,]) / sum(cm$table)
 print(paste("Class proportions are: ", proportion_of_1, proportion_of_0, "for 1 and 0, respectively."))
 ```
 
-Proporcia pozitívnych predpovedí (ofenzívnych hráčov) je približne 23.25%.
-Proporcia negatívnych predpovedí (defenzívnych hráčov) je približne 76.75%.
+Proporcia pozitívnych predpovedí (ofenzívnych hráčov) je približne 21%.
+Proporcia negatívnych predpovedí (defenzívnych hráčov) je približne 79%.
 
 Môže to tiež poukazovať na to, že model môže byť viac naklonený k predpovedaniu defenzívnych hráčov, čo môže byť dôsledkom nerovnováhy tried v tréningovej sade.
 
@@ -329,7 +321,7 @@ precision <- cm$table[2,2] / (cm$table[2,2] + cm$table[2,1])
 print(paste("Precision:", precision))
 ```
 
-Zo všetkých prípadov, ktoré model predpovedal ako ofenzívne (ak sú ofenzívni hráči označení ako 'pozitívna' trieda), približne 65% z nich boli skutočne ofenzívni hráči.
+Zo všetkých prípadov, ktoré model predpovedal ako ofenzívne (ak sú ofenzívni hráči označení ako 'pozitívna' trieda), približne 67% z nich boli skutočne ofenzívni hráči.
 Tento údaj je pomerne dobrý a naznačuje, že keď model predpovedá hráča ako ofenzívneho, máme relatívne vysokú dôveru, že táto predpoveď je správna.
 
 ```{r}
@@ -340,7 +332,7 @@ print(paste("Recall:", recall))
 
 Tento údaj je metrikou, ktorá hodnotí schopnosť modelu správne identifikovať všetky prípady, ktoré sú pozitívne.
 
-V praxi to znamená, že keď sa model snaží identifikovať ofenzívnych hráčov (pokiaľ ofenzívni hráči sú označení ako 'pozitívna' trieda), správne ich odhalí s pravdepodobnosťou 41.1%.
+V praxi to znamená, že keď sa model snaží identifikovať ofenzívnych hráčov (pokiaľ ofenzívni hráči sú označení ako 'pozitívna' trieda), správne ich odhalí s pravdepodobnosťou 34.3%.
 To môže byť interpretované ako relatívne nízka citlivosť, čo naznačuje, že mnoho ofenzívnych hráčov mohlo byť modelom prehliadnutých alebo nesprávne klasifikovaných ako defenzívni hráči.
 
 ```{r}
@@ -356,25 +348,9 @@ goals: Pozitívny koeficient hovorí, že s každým ďalším gólom sa log-odd
 To znamená, že viac gólov má výrazný pozitívny vplyv na šancu byť klasifikovaným ako ofenzívny hráč.
 
 assists: Negatívny koeficient pre asistencie ukazuje, že s každou ďalšou asistenciou sa pravdepodobnosť byť ofenzívnym hráčom mierne znižuje.
-To môže byť prekvapujúce a možno to vyžaduje ďalšiu analýzu kontextu alebo interakcií medzi príznakmi.
 
-points: NA (nie je definované) z dôvodu singularity, t.j., points je dokonalou lineárnou kombináciou goals a assists, čo vedie k problémom s multicolinearitou.
-
-penalty_minutes: Malý pozitívny koeficient, ale s p-hodnotou 0.31, naznačuje, že trestné minúty nemajú štatisticky významný vplyv na bytie ofenzívnym hráčom.
-
-plus_minus_ratings: Negatívny koeficient ukazuje, že vyššie plus/minus hodnotenie znižuje log-odds byť ofenzívnym hráčom, čo môže naznačovať, že hráči s lepším hodnotením v tejto štatistike sú efektívnejší v defenzíve.
-
-powerPlayPoints: Negatívny koeficient pre body získané počas presilovej hry tiež naznačuje, že ich zvýšenie vedie k zníženiu pravdepodobnosti byť klasifikovaným ako ofenzívny hráč.
-
-time_on_ice_per_game: Záporný koeficient naznačuje, že s každou ďalšou sekundou strávenou na ľade sa pravdepodobnosť byť ofenzívnym hráčom znižuje.
-To môže odzrkadľovať skutočnosť, že hráči s viac času na ľade môžu byť viac zameraní na defenzívne úlohy.
-
-Pr(\>\|z\|): P-hodnoty pre goals, assists, plus_minus_ratings, powerPlayPoints a time_on_ice_per_game sú výrazne nižšie ako 0.05, čo naznačuje, že tieto príznaky majú štatisticky významný vplyv na pravdepodobnosť byť klasifikovaný ako ofenzívny hráč.
-
-Naopak, penalty_minutes nemá štatisticky významný vplyv.
-
-Null deviance vs. Residual deviance: Zníženie z null deviance na residual deviance ukazuje, že model s príznakmi výrazne lepšie predpovedá výsledok ako model bez príznakov (len s interceptom).
-
-AIC (Akaike Information Criterion): Poskytuje meranie kvality modelu, kde nižšie hodnoty naznačujú lepší model vzhľadom na komplexnosť.
+Pr(\>\|z\|): P-hodnoty pre goals, assists su výrazne nižšie ako 0.05, čo naznačuje, že su statisticky vyznamne
 
 Tento model teda ukazuje, že určité štatistiky (ako počet gólov a plus/minus hodnotenie) sú významné pre identifikáciu ofenzívnych hráčov, zatiaľ čo iné faktory (ako trestné minúty) nemajú štatisticky podložený vplyv na túto klasifikáciu
+
+
