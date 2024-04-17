@@ -353,3 +353,149 @@ Pr(\>\|z\|): P-hodnoty pre goals, assists su výrazne nižšie ako 0.05, čo naz
 Tento model teda ukazuje, že určité štatistiky (ako počet gólov a plus/minus hodnotenie) sú významné pre identifikáciu ofenzívnych hráčov, zatiaľ čo iné faktory (ako trestné minúty) nemajú štatisticky podložený vplyv na túto klasifikáciu
 
 
+## Support Vector Machine (SVM)
+
+```{r}
+library(e1071)
+library(caret)
+library(pROC)
+```
+
+```{r}
+na_limits <- 0.5 * nrow(data)  # Limit pre vynechanie stĺpcov s nadmerným počtom chýbajúcich hodnôt
+# Tento riadok určuje prahovú hodnotu pre odstránenie stĺpcov s veľkým počtom chýbajúcich hodnôt (NA). Násobením 0.5 počtom riadkov (nrow(data)) nastavujeme prah, že akýkoľvek stĺpec s viac ako 50% chýbajúcich hodnôt bude odstránený z datasetu.
+data <- data[, colSums(is.na(data)) < na_limits]
+# V tomto riadku sa odstraňujú stĺpce, ktoré prekračujú práve definovanú prahovú hodnotu chýbajúcich hodnôt. Funkcia colSums(is.na(data)) vypočíta počet chýbajúcich hodnôt (NA) v každom stĺpci, a ten sa potom porovná s hodnotou na_limits.
+data <- data[, sapply(data, function(x) length(unique(x)) > 1)]  
+# Tento riadok odstraňuje stĺpce s konštantnými alebo takmer konštantnými hodnotami. Používa sapply na aplikáciu funkcie na každý stĺpec, ktorá zistí, či počet unikátnych hodnôt v stĺpci je väčší ako 1. Ak nie, taký stĺpec nie je pre model užitočný a je odstránený.
+data[] <- lapply(data, function(x) if(is.character(x)) factor(x) else x)  
+# Tu prechádzame cez všetky stĺpce a konvertuje znakové stĺpce na faktory. Tento krok je dôležitý, pretože mnohé modelovacie techniky v R vyžadujú, aby kategorické premenné boli v tvare faktorov. Používa sa tu lapply, čo je vhodné, pretože vracia zoznam a priradenie data[] <- sa uistí, že sa zmeny aplikujú priamo na dataset data.
+```
+
+```{r}
+# Vytvorenie tréningových a testovacích dat
+training_indices <- createDataPartition(data$role_oneHot, p = 0.7, list = FALSE)
+# Funkcia z knižnice caret je použitá na rozdelenie indexov dát do trénovacej a testovacej sady na základe cieľovej premennej data$role_oneHot.
+train_data <- data[training_indices, ]
+test_data <- data[-training_indices, ]
+```
+
+```{r}
+# Zabezpečenie konzistentných úrovní faktorov v tréningových aj testovacích datach
+train_data$role_oneHot <- factor(train_data$role_oneHot, levels = c("0", "1"))
+test_data$role_oneHot <- factor(test_data$role_oneHot, levels = c("0", "1"))
+# Tieto riadky nastavujú úrovne faktorov pre cieľovú premennú role_oneHot v trénovacej a
+# testovacej sade. Je dôležité mať konzistentné faktorové úrovne v oboch súboroch, aby sme zabezpečili, že výsledky budú správne # # interpretované pri trénovaní a testovaní modelu. 
+```
+
+```{r}
+# Výber relevantných prediktorov pre hypotézy
+selected_columns <- c("goals", "assists", "role_oneHot")  # Berieme do úvahy len góly, asistencie a role_oneHot
+train_data <- train_data[, selected_columns]
+test_data <- test_data[, selected_columns]
+# Aktualizujeme trénovacie a testovacie datasety tak, že ponecháme len vybrané stĺpce. To pomáha redukovať dimenzionality dát a zameriava model na najdôležitejšie charakteristiky, ktoré by mali vplyv na predikcie.
+```
+
+```{r}
+# Trénovanie modelu SVM s lineárnym jadrom
+svm_model <- try(svm(role_oneHot ~ goals + assists, data = train_data, kernel = "linear", cost = 1, scale = FALSE), silent = FALSE)
+# Trénovanie modelu SVM (Support Vector Machine) s lineárnym jadrom. Funkcia svm z knižnice e1071 je použitá s formulou, ktorá hovorí, že role_oneHot (či je hráč ofenzívny alebo nie) je predikovaná na základe  stĺpcov v train_data. Parameter cost nastavený na 1 kontroluje kompromis medzi dosahovaním širokej margity a minimalizáciou chyby klasifikácie. Parameter scale je nastavený na FALSE, čo znamená, že dáta nebudú automaticky škálované pred trénovaním modelu. Použitie try obaluje volanie funkcie svm tak, aby v prípade neúspechu (napr. keď dáta nie sú vhodné pre model SVM) nedošlo k ukončeniu skriptu, ale namiesto toho sa vráti chybová správa.
+```
+
+```{r}
+# Predpovedanie na základe testovacích dat
+svm_predictions_raw <- predict(svm_model, test_data[, -which(names(test_data) == "role_oneHot")])
+# spúšťa sa proces predikcie na testovacích dátach. Funkcia predict sa používa na vygenerovanie predpovedí s modelom SVM (svm_model), ktorý bol natrénovaný na trénovacej sade train_data.
+# Ensure predictions have the same factor levels
+svm_predictions <- factor(svm_predictions_raw, levels = levels(test_data$role_oneHot))
+# svm_predictions_raw je premenená na faktor s rovnakými úrovňami ako cieľová premenná v testovacej sade. Toto zabezpečuje, že predpovede modelu budú porovnateľné s cieľovými hodnotami.
+```
+
+```{r}  
+svm_confusionMatrix <- confusionMatrix(svm_predictions, test_data$role_oneHot, positive = "1")
+# Pomocou funkcie confusionMatrix z knižnice caret sa vytvára matica zámien (confusion matrix), ktorá sumarizuje výkon klasifikácie porovnaním predpovedí modelu (svm_predictions) s pravdivými hodnotami (test_data$role_oneHot). Parameter positive = "1" definuje, ktorá úroveň cieľovej premennej je považovaná za pozitívnu triedu.
+print(svm_confusionMatrix)
+```
+
+```{r} 
+# Extrahovanie rozhodovacích hodnôt pre analýzu ROC, zabezpečenie správneho typu dat
+predicted_with_decision_values <- predict(svm_model, test_data, decision.values = TRUE)
+svm_decision_values <- attr(predicted_with_decision_values, "decision.values")
+# Na vykonanie ROC analýzy sa extrahujú rozhodovacie hodnoty z modelu SVM. Tieto hodnoty sú potrebné na výpočet ROC krivky, ktorá poskytuje grafické hodnotenie výkonnosti modelu pri rôznych prahových hodnotách. Pomocou atribútu decision.values = TRUE v funkcií predict sa získavajú rozhodovacie hodnoty, ktoré umožňujú zobraziť, ako sa model rozhodol medzi dvoma triedami.
+```
+
+```{r}
+# Make sure svm_decision_values is a numeric vector
+if (is.matrix(svm_decision_values) && ncol(svm_decision_values) == 2) {
+  svm_decision_values <- svm_decision_values[, 2]
+}
+
+# Premenná svm_decision_values ukladá rozhodovacie hodnoty, ktoré predikčný model SVM generuje počas predikcie. V matici rozhodovacích hodnôt sa bežne nachádzajú skóre pre každú triedu. V tomto prípade indexujeme maticu, aby sme získali hodnoty spojené s druhým stĺpcom, ktorý zodpovedá "pozitívnej" triede.
+``` 
+
+```{r}  
+# ROC Analýza
+roc_response <- roc(response = as.numeric(test_data$role_oneHot) - 1, predictor = svm_decision_values)
+plot(roc_response)
+svm_auc_value <- auc(roc_response)
+print(paste("AUC for SVM:", svm_auc_value))
+```
+# ROC krivka nám ukazuje schopnosť modelu správne klasifikovať prípady ako pozitívne (napr. ofenzívni hráči) alebo negatívne (napr. defenzívni hráči) pre rôzne prahové hodnoty.
+
+# AUC hodnota je plocha pod ROC krivkou a poskytuje sumarizovaný ukazovateľ účinnosti modelu. AUC hodnota blízka k 1 značí vysokú prediktívnu schopnosť modelu, zatiaľ čo hodnota blízko k 0.5 naznačuje výkon, ktorý nie je lepší ako náhodné hádanie.
+
+```{r}
+# Vypočer presnosti predpovedí
+precision <- svm_confusionMatrix$table[2, 2] / (svm_confusionMatrix$table[2, 2] + svm_confusionMatrix$table[1, 2])
+print(paste("Precision:", precision))
+# Precision (Presnosť): Schopnosť modelu, že prípady označené ako pozitívne sú skutočne pozitívne. Vyššia hodnota značí, že keď model označí prípad ako pozitívny, je väčšia šanca, že to je správne.
+```
+
+```{r}
+# Vypočet Recall predpovedí
+recall <- svm_confusionMatrix$table[2, 2] / (svm_confusionMatrix$table[2, 2] + svm_confusionMatrix$table[2, 1])
+print(paste("Recall:", recall))
+# Recall (Citlivosť): Schopnosť modelu správne identifikovať pozitívne prípady. Vyššia hodnota naznačuje, že model je lepší v detekcii pozitívnych prípadov.
+```
+
+```{r}
+# Celkova presnosť modelu
+accuracy <- svm_confusionMatrix$overall['Accuracy']
+print(paste("Accuracy:", accuracy))
+# Presnosť (Accuracy): Proporcia správne klasifikovaných prípadov zo všetkých prípadov. Vyššia hodnota značí lepší celkový výkon modelu.
+```
+
+```{r}
+# Vypočet pomeru tried
+proportion_of_1 <- sum(svm_confusionMatrix$table[2, ]) / sum(svm_confusionMatrix$table)
+proportion_of_0 <- sum(svm_confusionMatrix$table[1, ]) / sum(svm_confusionMatrix$table)
+print(paste("Class proportions are:", proportion_of_1, "for 1 and", proportion_of_0, "for 0 respectively."))
+```
+
+```{r}
+# Sumarizácia modelu SVM a interpretácia výsledkov
+svm_model_summary <- summary(svm_model)
+print(svm_model_summary)
+```
+
+
+Modely SVM v knižnici e1071 v R nevracajú podrobnú sumarizáciu koeficientov a ich štatistík, ako je to v prípade lineárnej alebo # # # logistickej regresie. SVM modely pracujú na princípe maximalizácie okraja a používajú podporné vektory, nie koeficienty pre jednotlivé premenné
+
+Výstup pre SVM model vám hovorí:
+
+Typ SVM: C-klasifikácia, čo je štandardný typ SVM používaný pre klasifikačné úlohy.
+Jadro SVM: Lineárne, čo znamená, že model hľadá lineárne rozdeľujúcu hranicu medzi dvoma triedami.
+Cost: 1, čo je parameter, ktorý penalizuje nesprávne klasifikované príklady a ovláda obchodovanie medzi nájdením maximálne širokého # okraja a minimalizáciou klasifikačných chýb.
+
+Počet podporných vektorov (Support Vectors): 12 576, čo sú konkrétne príklady z trénovacej sady, ktoré určujú okraj medzi triedami. Podporné vektory sú najdôležitejšie príklady, pretože sú najbližšie k hranici rozdelenia a tým určujú tvar hranice rozhodnutia.
+
+Počet tried: 2, čo značí, že model rieši binárnu klasifikačnú úlohu.
+Úrovne: 0 a 1, čo sú možné kategórie cieľovej premennej.
+
+
+## Rozdiel medzi Klasifikaciou a SVM 
+
+Rozdiel je v podstate vo výberu metódy. Klasifikácia je široký termín, ktorý zahŕňa akýkoľvek typ prediktívneho modelovania, ktoré rozdeľuje dáta do preddefinovaných tried alebo kategórií. SVM je špecifický typ klasifikačného modelu, ktorý sa snaží nájsť hyperrovinu (v prípade vysokorozmerných dát nazývanú aj hyperplocha) v priestore, ktorá najlepšie rozdelí dáta na požadované triedy.
+
+
+## Porovnanie vysledkov
