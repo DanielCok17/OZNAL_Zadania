@@ -1,5 +1,5 @@
 ---
-title: "OZNAL - zadanie 1"
+title: "OZNAL - zadanie 1, 2"
 author: "Daniel Cok, Jakub Abrahoim"
 output: html_document
 editor_options: 
@@ -18,14 +18,17 @@ library(magrittr)
 library(data.table) # Pre %like% operátor
 library(caret) # Pre confusionMatrix
 library(pROC)
-
+library(glmnet) # Lasso
+library(e1071) # SVM
 ```
 
 # Načítanie dát
 
 ```{r}
 getwd()
-setwd("/Users/danielcok/xcok/4.semester/OZNAL/Zadanie") # Set the correct path to players_22.csv
+# /Users/danielcok/xcok/4.semester/OZNAL/Zadanie
+# /Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania
+setwd("/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania") # Set the correct path to players_22.csv
 data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
 data
 view(data)
@@ -352,14 +355,7 @@ Pr(\>\|z\|): P-hodnoty pre goals, assists su výrazne nižšie ako 0.05, čo naz
 
 Tento model teda ukazuje, že určité štatistiky (ako počet gólov a plus/minus hodnotenie) sú významné pre identifikáciu ofenzívnych hráčov, zatiaľ čo iné faktory (ako trestné minúty) nemajú štatisticky podložený vplyv na túto klasifikáciu
 
-
-## Support Vector Machine (SVM)
-
-```{r}
-library(e1071)
-library(caret)
-library(pROC)
-```
+# Support Vector Machine (SVM)
 
 ```{r}
 na_limits <- 0.5 * nrow(data)  # Limit pre vynechanie stĺpcov s nadmerným počtom chýbajúcich hodnôt
@@ -440,9 +436,9 @@ plot(roc_response)
 svm_auc_value <- auc(roc_response)
 print(paste("AUC for SVM:", svm_auc_value))
 ```
-# ROC krivka nám ukazuje schopnosť modelu správne klasifikovať prípady ako pozitívne (napr. ofenzívni hráči) alebo negatívne (napr. defenzívni hráči) pre rôzne prahové hodnoty.
+ROC krivka nám ukazuje schopnosť modelu správne klasifikovať prípady ako pozitívne (napr. ofenzívni hráči) alebo negatívne (napr. defenzívni hráči) pre rôzne prahové hodnoty.
 
-# AUC hodnota je plocha pod ROC krivkou a poskytuje sumarizovaný ukazovateľ účinnosti modelu. AUC hodnota blízka k 1 značí vysokú prediktívnu schopnosť modelu, zatiaľ čo hodnota blízko k 0.5 naznačuje výkon, ktorý nie je lepší ako náhodné hádanie.
+AUC hodnota je plocha pod ROC krivkou a poskytuje sumarizovaný ukazovateľ účinnosti modelu. AUC hodnota blízka k 1 značí vysokú prediktívnu schopnosť modelu, zatiaľ čo hodnota blízko k 0.5 naznačuje výkon, ktorý nie je lepší ako náhodné hádanie.
 
 ```{r}
 # Vypočer presnosti predpovedí
@@ -499,3 +495,95 @@ Rozdiel je v podstate vo výberu metódy. Klasifikácia je široký termín, kto
 
 
 ## Porovnanie vysledkov
+
+# Lasso
+Pre Lasso regresiu potrebujeme načítať knižnicu `glmnet`, ktorá obsahuje funkcie pre Lasso regresiu `glmnet(...)`. Tento krok sme pridali na začiatku, kde načítavame všetky potrebné knižnice.
+
+Ako dáta použijeme `train` a `test` dáta, ktoré boli vytvorené z filtered_data, čiže ofenzívnych a defenzívnych hráčov rovnako ako v prípade lm modelu.
+
+Zadefinovanie `x` a `y` resp. predictors a response resp. dependent a independent premennych.
+```{r}
+# Dve ekvivalentne možnosti definovania
+predictors <- model.matrix(goals ~ shots_on_goal + shooting_percentage, data = train)[, -1]
+#predictors <- data.matrix(train[, c("shots_on_goal", "shooting_percentage")])
+
+predictors_test <- model.matrix(goals ~ shots_on_goal + shooting_percentage, data = test)[, -1]
+
+# Tzv. response, y alebo dependent variable
+response <- train$goals
+
+response_test <- test$goals
+```
+
+Vytvorenie samotného modelu pre Lasso. Použijeme funkciu `cv.glmnet`, ktorá robí cross-validáciu. Týmto zistíme najmenjšiu resp. najlepšiu lambdu. Táto funkcia nám vráti model, s najlepšou lambda hodnotou.
+
+Parametre funkcie `cv.glmnet` a `glmnet`:
+
+- x - predictors
+- y - response
+- alpha - hovorí, či chcele ridge (hodnota 0), lasso (hodnota 1) alebo elastic-net (hodnota 0.5) regresiu
+- family - v našom prípade gaussian (lineárna regresia)
+```{r}
+lasso_model_cv <- cv.glmnet(predictors, response, alpha = 1, family = "gaussian")
+lasso_model_cv
+plot(lasso_model_cv)
+
+min_lambda <- lasso_model_cv$lambda.min
+min_lambda
+```
+Interpretácia modela:
+
+- **Lambda** - tzv. tuning parameter
+- **Index** - Index lambda hodnotz, ktora bola použitá
+- **Measure** - MSE (Mean square error)
+- **SE** - Standardná chyba pre MSE
+- **Nonzero** - Počet prediktorov, ktoré mali nenulové koeficienty
+
+Plot modelu nám vrátil graf. Na osi x vidíme log(lambda) hodnoty, ktoré funkcia vyskúšala. Na osi y máme MSE (mean square error) pre každú lambda hodnotu. Vertikálna bodkovaná čiara nám ukazuje optimálnu lambda hodnotu, ktorú funkcia vybrala (ten model bol vrátený).
+
+Teraz už máme najlepšiu lambdu tak si môžeme vytvoriť model, kde ako parameter `lambda` dosadíme našu najlepšiu lambdu z predošlého kroku.
+```{r}
+lasso_model <- glmnet(predictors, response, alpha = 1, family = "gaussian", lambda = min_lambda)
+
+coef(lasso_model)
+```
+Čo sa týka koeficientov pre náš lasso model tak sú veľmi porovnateľné s výsledkami z lineárnej regresie:
+
+- **Intercept** - ~ -2.981 (-3.09 pri lm) - pre náš konkrétny prípad to je však jedno keďže logicky ide o 0 gólov ak sú `shots_on_goal` 0 a `shooting_percentage` 0.
+- **shots_on_goal** - Pri zvýšení počtov striel na bránu očakávame zvýšenie počtu gólov o ~0.1050 (~0.1059 pri lm)
+- **shooting_percentage** - Pri zvýšení percentuálnej úspešnosti striel o 1 očakávame zvýšenie počtu gólov o ~0.2811 (~0.2869 pri lm) 
+
+Predikcia a výpočet chyby
+```{r}
+# Predikcia s trénovacími dátami
+train_prediction <- predict(lasso_model, s = min_lambda, newx = predictors)
+# Predikcia s testovacími dátami
+test_prediction <- predict(lasso_model, s = min_lambda, newx = predictors_test)
+
+train_residuals <- train_prediction - response
+test_residuals <- test_prediction - response_test
+
+RSS_train <- sum(train_residuals^2)
+RMSE_train <- sqrt(mean(train_residuals^2))
+print(paste("Training RSS (Residual sum of squares):", RSS_train))
+print(paste("Training RMSE (Root mean square error):", RMSE_train))
+
+RSS_test <- sum(test_residuals^2)
+RMSE_test <- sqrt(mean(test_residuals^2))
+print(paste("Testing RSS (Residual sum of squares):", RSS_test))
+print(paste("Testing RMSE (Root mean square error):", RMSE_test))
+
+```
+RSS (residual sum of squares) a RMSE (root mean square error) nám tiež výšli podobne ako pri lineárnej regresií.
+
+Pre trénovacie dáta:
+
+- RSS = ~216 141.62 oproti 218 407.5 pri lineárnej regresií -> o niečo lepší (menší) výsledok mal lasso
+- RMSE = ~4.073 oproti 4.089 pri lineárnej regresií -> o niečo lepší (menší) výsledok mal lasso
+
+
+Pre testovacie dáta:
+
+- RSS = ~95 149.035 oproti 92606.39 pri lineárnej regresií -> o niečo lepší (menší) výsledok mala lineárna regresia
+- RMSE = ~4.092 oproti 4.049 pri lineárnej regresií -> o niečo lepší (menší) výsledok mala lineárna regrsia
+
