@@ -1,5 +1,5 @@
 ---
-title: "OZNAL - zadanie 1"
+title: "OZNAL - zadanie 1, 2"
 author: "Daniel Cok, Jakub Abrahoim"
 output: html_document
 editor_options: 
@@ -18,14 +18,17 @@ library(magrittr)
 library(data.table) # Pre %like% operátor
 library(caret) # Pre confusionMatrix
 library(pROC)
-
+library(glmnet) # Lasso
+library(e1071) # SVM
 ```
 
 # Načítanie dát
 
 ```{r}
 getwd()
-setwd("/Users/danielcok/xcok/4.semester/OZNAL/Zadanie") # Set the correct path to players_22.csv
+# /Users/danielcok/xcok/4.semester/OZNAL/Zadanie
+# /Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania
+setwd("/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania") # Set the correct path to players_22.csv
 data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
 data
 view(data)
@@ -352,14 +355,7 @@ Pr(\>\|z\|): P-hodnoty pre goals, assists su výrazne nižšie ako 0.05, čo naz
 
 Tento model teda ukazuje, že určité štatistiky (ako počet gólov a plus/minus hodnotenie) sú významné pre identifikáciu ofenzívnych hráčov, zatiaľ čo iné faktory (ako trestné minúty) nemajú štatisticky podložený vplyv na túto klasifikáciu
 
-
-## Support Vector Machine (SVM)
-
-```{r}
-library(e1071)
-library(caret)
-library(pROC)
-```
+# Support Vector Machine (SVM)
 
 ```{r}
 # Limit pre vynechanie stĺpcov s nadmerným počtom chýbajúcich hodnôt
@@ -584,89 +580,94 @@ Gradient Boosting môže byť lepší v týchto dátach, pretože je schopný za
 
 ## Porovnanie vysledkov
 
-1. model GLM:
-Presnosť je porovnateľná s ostatnými dvoma modelmi, ale nie najlepšia.
-Vyššia špecificita ako Gradient Boosting, ale nižšia ako SVM.
-Stredná citlivosť a Kappa naznačujú priemerné výkony.
+# Lasso
+Pre Lasso regresiu potrebujeme načítať knižnicu `glmnet`, ktorá obsahuje funkcie pre Lasso regresiu `glmnet(...)`. Tento krok sme pridali na začiatku, kde načítavame všetky potrebné knižnice.
 
-2. model SVM:
-Tento model má vysokú špecificitu, čo znamená, že je veľmi dobrý v identifikácii negatívnych prípadov (defenzívni hráči).
-Nízka citlivosť naznačuje, že model má problémy správne klasifikovať pozitívne prípady (ofenzívni hráči).
-Relatívne nízka hodnota Kappa ukazuje na slabú dohodu nad rámec náhodnosti.
+Ako dáta použijeme `train` a `test` dáta, ktoré boli vytvorené z filtered_data, čiže ofenzívnych a defenzívnych hráčov rovnako ako v prípade lm modelu.
 
-3. model Gradient Boosting
-Vyššia presnosť v porovnaní s SVM.
-Vysoká citlivosť značí, že model je efektívny v identifikovaní pozitívnych prípadov.
-Nízka špecificita naznačuje, že model často nesprávne klasifikuje negatívne prípady ako pozitívne.
-Vyššie hodnoty Kappa a Balanced Accuracy ako pri SVM, čo značí lepšie celkové výsledky.
+Zadefinovanie `x` a `y` resp. predictors a response resp. dependent a independent premennych.
+```{r}
+# Dve ekvivalentne možnosti definovania
+predictors <- model.matrix(goals ~ shots_on_goal + shooting_percentage, data = train)[, -1]
+#predictors <- data.matrix(train[, c("shots_on_goal", "shooting_percentage")])
 
-Popis jednotlivych metod:
+predictors_test <- model.matrix(goals ~ shots_on_goal + shooting_percentage, data = test)[, -1]
 
-## Logistická regresia
+# Tzv. response, y alebo dependent variable
+response <- train$goals
+
+response_test <- test$goals
+```
+
+Vytvorenie samotného modelu pre Lasso. Použijeme funkciu `cv.glmnet`, ktorá robí cross-validáciu. Týmto zistíme najmenjšiu resp. najlepšiu lambdu. Táto funkcia nám vráti model, s najlepšou lambda hodnotou.
+
+Parametre funkcie `cv.glmnet` a `glmnet`:
+
+- x - predictors
+- y - response
+- alpha - hovorí, či chcele ridge (hodnota 0), lasso (hodnota 1) alebo elastic-net (hodnota 0.5) regresiu
+- family - v našom prípade gaussian (lineárna regresia)
+```{r}
+lasso_model_cv <- cv.glmnet(predictors, response, alpha = 1, family = "gaussian")
+lasso_model_cv
+plot(lasso_model_cv)
+
+min_lambda <- lasso_model_cv$lambda.min
+min_lambda
+```
+Interpretácia modela:
+
+- **Lambda** - tzv. tuning parameter
+- **Index** - Index lambda hodnotz, ktora bola použitá
+- **Measure** - MSE (Mean square error)
+- **SE** - Standardná chyba pre MSE
+- **Nonzero** - Počet prediktorov, ktoré mali nenulové koeficienty
+
+Plot modelu nám vrátil graf. Na osi x vidíme log(lambda) hodnoty, ktoré funkcia vyskúšala. Na osi y máme MSE (mean square error) pre každú lambda hodnotu. Vertikálna bodkovaná čiara nám ukazuje optimálnu lambda hodnotu, ktorú funkcia vybrala (ten model bol vrátený).
+
+Teraz už máme najlepšiu lambdu tak si môžeme vytvoriť model, kde ako parameter `lambda` dosadíme našu najlepšiu lambdu z predošlého kroku.
+```{r}
+lasso_model <- glmnet(predictors, response, alpha = 1, family = "gaussian", lambda = min_lambda)
+
+coef(lasso_model)
+```
+Čo sa týka koeficientov pre náš lasso model tak sú veľmi porovnateľné s výsledkami z lineárnej regresie:
+
+- **Intercept** - ~ -2.981 (-3.09 pri lm) - pre náš konkrétny prípad to je však jedno keďže logicky ide o 0 gólov ak sú `shots_on_goal` 0 a `shooting_percentage` 0.
+- **shots_on_goal** - Pri zvýšení počtov striel na bránu očakávame zvýšenie počtu gólov o ~0.1050 (~0.1059 pri lm)
+- **shooting_percentage** - Pri zvýšení percentuálnej úspešnosti striel o 1 očakávame zvýšenie počtu gólov o ~0.2811 (~0.2869 pri lm) 
+
+Predikcia a výpočet chyby
+```{r}
+# Predikcia s trénovacími dátami
+train_prediction <- predict(lasso_model, s = min_lambda, newx = predictors)
+# Predikcia s testovacími dátami
+test_prediction <- predict(lasso_model, s = min_lambda, newx = predictors_test)
+
+train_residuals <- train_prediction - response
+test_residuals <- test_prediction - response_test
+
+RSS_train <- sum(train_residuals^2)
+RMSE_train <- sqrt(mean(train_residuals^2))
+print(paste("Training RSS (Residual sum of squares):", RSS_train))
+print(paste("Training RMSE (Root mean square error):", RMSE_train))
+
+RSS_test <- sum(test_residuals^2)
+RMSE_test <- sqrt(mean(test_residuals^2))
+print(paste("Testing RSS (Residual sum of squares):", RSS_test))
+print(paste("Testing RMSE (Root mean square error):", RMSE_test))
+
+```
+RSS (residual sum of squares) a RMSE (root mean square error) nám tiež výšli podobne ako pri lineárnej regresií.
+
+Pre trénovacie dáta:
+
+- RSS = ~216 141.62 oproti 218 407.5 pri lineárnej regresií -> o niečo lepší (menší) výsledok mal lasso
+- RMSE = ~4.073 oproti 4.089 pri lineárnej regresií -> o niečo lepší (menší) výsledok mal lasso
 
 
-Logistická regresia modeluje pravdepodobnosť výskytu udalosti využitím logistického rozdelenia.
-Vypočíta sa pravdepodobnosť, že cieľová premenná patrí do jednej z kategórií (typicky 0 alebo 1) na základe lineárnej kombinácie vstupných premenných.
-Výsledok je transformovaný pomocou logit funkcie (logistická funkcia), ktorá mapuje akúkoľvek reálnu hodnotu na interval (0,1), čo predstavuje pravdepodobnosť.
+Pre testovacie dáta:
 
-Výhody:
-
-Poskytuje pravdepodobnostné výstupy pre predikcie.
-Jednoduchá interpretácia výsledkov.
-Robustná voči šumu a menej náchylná na overfitting pri malých dátových sadách.
-
-Nevýhody:
-
-Predpokladá lineárny vzťah medzi nezávislými premennými a logitom pravdepodobnosti.
-Môže byť menej účinná, ak sú vzťahy medzi premennými nelineárne alebo ak existuje vysoká kolinearita.
-
-## Support Vector Machine (SVM)
-
-SVM hľadá hyperrovinu (alebo sady hyperrovín) v multidimenzionálnom priestore, ktorá najlepšie oddeluje rôzne triedy dát.
-Optimalizuje okraj medzi najbližšími dátovými bodmi rôznych tried, známy ako podporné vektory.
-Môže používať jadrové triky na efektívne mapovanie dát do vyšších rozmerov na nájdenie rozdelovacej hranice pre nelineárne klasifikačné problémy.
-
-Výhody:
-
-Efektívny v komplexných doménach, kde hranice medzi triedami nie sú jasne definované.
-Funguje dobre na menších, čistých dátových sadách.
-Flexibilný vo výbere jadier pre rôzne typy dát.
-
-Nevýhody:
-
-Môže byť náročný na výpočtové zdroje, najmä s veľkým počtom vstupných premenných alebo dátových bodov.
-Náchylný na overfitting, najmä pri nedostatku regulácie alebo pri vysoko dimenzionálnych dátach.
-
-Gradient Boosting
-
-Gradient Boosting je ansámblová technika, ktorá vytvára model ako sériu slabých prediktívnych modelov (väčšinou stromové modely), ktoré sa iteratívne vylepšujú.
-Každý nasledujúci model sa snaží opraviť chyby predchádzajúceho modelu využitím gradientného klesania, optimalizácie založenej na minimalizácii stratovej funkcie.
-
-Výhody:
-
-Veľmi výkonný pre širokú škálu prediktívnych úloh.
-Poskytuje vysokú presnosť a efektivitu.
-Flexibilný vo výbere stratovej funkcie a podpory rôznych typov predikcií (binárne, multiklasové, regresné).
-
-Nevýhody:
-
-Často náchylný na overfitting, pokiaľ nie je správne nastavený (napr. hĺbka stromov, rýchlosť učenia).
-Môže byť časovo náročný na trénovanie, najmä pri veľkých dátových sadách.
-
-Rozdiely medzi 3 modelmi:
-
-Zložitosť modelu: Logistická regresia je najjednoduchšia, zatiaľ čo SVM a Gradient Boosting sú zložitejšie a môžu modelovať zložitejšie vzťahy.
-
-Predpoklady: Logistická regresia má striktnejšie predpoklady o dátach, SVM a Gradient Boosting sú flexibilnejšie voči nelinearitám.
-
-Výkon: Gradient Boosting často dosahuje najlepší výkon na rôznych dátových sadách a problémoch, ale za cenu väčšej náchylnosti na overfitting a vyššej výpočtovej náročnosti. SVM je účinný v situáciách, kde je možné nájsť jasné rozdelenie tried, a logistická regresia je skvelá pre jednoduchšie problémy a rýchle prototypovanie.
-
-
-
-
-
-
-
-Zaver:
-Každý model má svoje silné a slabé stránky v závislosti od povahy údajov a toho, čo je potrebné predpovedať. Gradient Boosting poskytol najlepšiu celkovú presnosť a vyváženú presnosť, ale jeho nízka špecificita môže byť problém v určitých aplikáciách. Na druhej strane, SVM poskytol vynikajúcu špecificitu, ale na úkor citlivosťi, čo môže byť limitujúce, ak je dôležité identifikovať pozitívne prípady.
+- RSS = ~95 149.035 oproti 92606.39 pri lineárnej regresií -> o niečo lepší (menší) výsledok mala lineárna regresia
+- RMSE = ~4.092 oproti 4.049 pri lineárnej regresií -> o niečo lepší (menší) výsledok mala lineárna regrsia
 
