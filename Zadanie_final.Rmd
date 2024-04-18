@@ -362,76 +362,88 @@ library(pROC)
 ```
 
 ```{r}
-na_limits <- 0.5 * nrow(data)  # Limit pre vynechanie stĺpcov s nadmerným počtom chýbajúcich hodnôt
-# Tento riadok určuje prahovú hodnotu pre odstránenie stĺpcov s veľkým počtom chýbajúcich hodnôt (NA). Násobením 0.5 počtom riadkov (nrow(data)) nastavujeme prah, že akýkoľvek stĺpec s viac ako 50% chýbajúcich hodnôt bude odstránený z datasetu.
+# Limit pre vynechanie stĺpcov s nadmerným počtom chýbajúcich hodnôt
+na_limits <- 0.5 * nrow(data)  
 data <- data[, colSums(is.na(data)) < na_limits]
-# V tomto riadku sa odstraňujú stĺpce, ktoré prekračujú práve definovanú prahovú hodnotu chýbajúcich hodnôt. Funkcia colSums(is.na(data)) vypočíta počet chýbajúcich hodnôt (NA) v každom stĺpci, a ten sa potom porovná s hodnotou na_limits.
 data <- data[, sapply(data, function(x) length(unique(x)) > 1)]  
-# Tento riadok odstraňuje stĺpce s konštantnými alebo takmer konštantnými hodnotami. Používa sapply na aplikáciu funkcie na každý stĺpec, ktorá zistí, či počet unikátnych hodnôt v stĺpci je väčší ako 1. Ak nie, taký stĺpec nie je pre model užitočný a je odstránený.
 data[] <- lapply(data, function(x) if(is.character(x)) factor(x) else x)  
-# Tu prechádzame cez všetky stĺpce a konvertuje znakové stĺpce na faktory. Tento krok je dôležitý, pretože mnohé modelovacie techniky v R vyžadujú, aby kategorické premenné boli v tvare faktorov. Používa sa tu lapply, čo je vhodné, pretože vracia zoznam a priradenie data[] <- sa uistí, že sa zmeny aplikujú priamo na dataset data.
 ```
+1. riadok určuje prahovú hodnotu pre odstránenie stĺpcov s veľkým počtom chýbajúcich hodnôt (NA). Násobením 0.5 počtom riadkov (nrow(data)) nastavujeme prah, že akýkoľvek stĺpec s viac ako 50% chýbajúcich hodnôt bude odstránený z datasetu.
 
+V 2. riadku sa odstraňujú stĺpce, ktoré prekračujú práve definovanú prahovú hodnotu chýbajúcich hodnôt. Funkcia colSums(is.na(data)) vypočíta počet chýbajúcich hodnôt (NA) v každom stĺpci, a ten sa potom porovná s hodnotou na_limits.
+
+V 3. riadok odstraňuje stĺpce s konštantnými alebo takmer konštantnými hodnotami. Používa sapply na aplikáciu funkcie na každý stĺpec, ktorá zistí, či počet unikátnych hodnôt v stĺpci je väčší ako 1. Ak nie, taký stĺpec nie je pre model užitočný a je odstránený.
+
+Vo 4. riadku prechádzame cez všetky stĺpce a konvertuje znakové stĺpce na faktory. Tento krok je dôležitý, pretože mnohé modelovacie techniky v R vyžadujú, aby kategorické premenné boli v tvare faktorov. Používa sa tu lapply, čo je vhodné, pretože vracia zoznam a priradenie data[] <- sa uistí, že sa zmeny aplikujú priamo na dataset data.
 ```{r}
 # Vytvorenie tréningových a testovacích dat
 training_indices <- createDataPartition(data$role_oneHot, p = 0.7, list = FALSE)
-# Funkcia z knižnice caret je použitá na rozdelenie indexov dát do trénovacej a testovacej sady na základe cieľovej premennej data$role_oneHot.
 train_data <- data[training_indices, ]
 test_data <- data[-training_indices, ]
 ```
+
+Funkcia z knižnice caret je použitá na rozdelenie indexov dát do trénovacej a testovacej sady na základe cieľovej premennej 
+data$role_oneHot.
 
 ```{r}
 # Zabezpečenie konzistentných úrovní faktorov v tréningových aj testovacích datach
 train_data$role_oneHot <- factor(train_data$role_oneHot, levels = c("0", "1"))
 test_data$role_oneHot <- factor(test_data$role_oneHot, levels = c("0", "1"))
-# Tieto riadky nastavujú úrovne faktorov pre cieľovú premennú role_oneHot v trénovacej a
-# testovacej sade. Je dôležité mať konzistentné faktorové úrovne v oboch súboroch, aby sme zabezpečili, že výsledky budú správne # # interpretované pri trénovaní a testovaní modelu. 
 ```
+
+Tieto riadky nastavujú úrovne faktorov pre cieľovú premennú role_oneHot v trénovacej a
+testovacej sade. Je dôležité mať konzistentné faktorové úrovne v oboch súboroch, aby sme zabezpečili, že výsledky budú správne # # interpretované pri trénovaní a testovaní modelu. 
 
 ```{r}
 # Výber relevantných prediktorov pre hypotézy
 selected_columns <- c("goals", "assists", "role_oneHot")  # Berieme do úvahy len góly, asistencie a role_oneHot
 train_data <- train_data[, selected_columns]
 test_data <- test_data[, selected_columns]
-# Aktualizujeme trénovacie a testovacie datasety tak, že ponecháme len vybrané stĺpce. To pomáha redukovať dimenzionality dát a zameriava model na najdôležitejšie charakteristiky, ktoré by mali vplyv na predikcie.
 ```
+
+Aktualizujeme trénovacie a testovacie datasety tak, že ponecháme len vybrané stĺpce. To pomáha redukovať dimenzionality dát a zameriava model na najdôležitejšie charakteristiky, ktoré by mali vplyv na predikcie.
 
 ```{r}
 # Trénovanie modelu SVM s lineárnym jadrom
 svm_model <- try(svm(role_oneHot ~ goals + assists, data = train_data, kernel = "linear", cost = 1, scale = FALSE), silent = FALSE)
-# Trénovanie modelu SVM (Support Vector Machine) s lineárnym jadrom. Funkcia svm z knižnice e1071 je použitá s formulou, ktorá hovorí, že role_oneHot (či je hráč ofenzívny alebo nie) je predikovaná na základe  stĺpcov v train_data. Parameter cost nastavený na 1 kontroluje kompromis medzi dosahovaním širokej margity a minimalizáciou chyby klasifikácie. Parameter scale je nastavený na FALSE, čo znamená, že dáta nebudú automaticky škálované pred trénovaním modelu. Použitie try obaluje volanie funkcie svm tak, aby v prípade neúspechu (napr. keď dáta nie sú vhodné pre model SVM) nedošlo k ukončeniu skriptu, ale namiesto toho sa vráti chybová správa.
 ```
+
+Trénovanie modelu SVM (Support Vector Machine) s lineárnym jadrom. Funkcia svm z knižnice e1071 je použitá s formulou, ktorá hovorí, že role_oneHot (či je hráč ofenzívny alebo nie) je predikovaná na základe  stĺpcov v train_data. Parameter cost nastavený na 1 kontroluje kompromis medzi dosahovaním širokej margity a minimalizáciou chyby klasifikácie. Parameter scale je nastavený na FALSE, čo znamená, že dáta nebudú automaticky škálované pred trénovaním modelu. Použitie try obaluje volanie funkcie svm tak, aby v prípade neúspechu (napr. keď dáta nie sú vhodné pre model SVM) nedošlo k ukončeniu skriptu, ale namiesto toho sa vráti chybová správa.
 
 ```{r}
 # Predpovedanie na základe testovacích dat
 svm_predictions_raw <- predict(svm_model, test_data[, -which(names(test_data) == "role_oneHot")])
-# spúšťa sa proces predikcie na testovacích dátach. Funkcia predict sa používa na vygenerovanie predpovedí s modelom SVM (svm_model), ktorý bol natrénovaný na trénovacej sade train_data.
 # Ensure predictions have the same factor levels
 svm_predictions <- factor(svm_predictions_raw, levels = levels(test_data$role_oneHot))
-# svm_predictions_raw je premenená na faktor s rovnakými úrovňami ako cieľová premenná v testovacej sade. Toto zabezpečuje, že predpovede modelu budú porovnateľné s cieľovými hodnotami.
 ```
+
+Tu sa spúšťa proces predikcie na testovacích dátach. Funkcia predict sa používa na vygenerovanie predpovedí s modelom SVM (svm_model), ktorý bol natrénovaný na trénovacej sade train_data.
+
+svm_predictions_raw je premenená na faktor s rovnakými úrovňami ako cieľová premenná v testovacej sade. Toto zabezpečuje, že predpovede modelu budú porovnateľné s cieľovými hodnotami.
 
 ```{r}  
 svm_confusionMatrix <- confusionMatrix(svm_predictions, test_data$role_oneHot, positive = "1")
-# Pomocou funkcie confusionMatrix z knižnice caret sa vytvára matica zámien (confusion matrix), ktorá sumarizuje výkon klasifikácie porovnaním predpovedí modelu (svm_predictions) s pravdivými hodnotami (test_data$role_oneHot). Parameter positive = "1" definuje, ktorá úroveň cieľovej premennej je považovaná za pozitívnu triedu.
 print(svm_confusionMatrix)
 ```
+
+Pomocou funkcie confusionMatrix z knižnice caret sa vytvára matica zámien (confusion matrix), ktorá sumarizuje výkon klasifikácie porovnaním predpovedí modelu (svm_predictions) s pravdivými hodnotami (test_data$role_oneHot). Parameter positive = "1" definuje, ktorá úroveň cieľovej premennej je považovaná za pozitívnu triedu.
 
 ```{r} 
 # Extrahovanie rozhodovacích hodnôt pre analýzu ROC, zabezpečenie správneho typu dat
 predicted_with_decision_values <- predict(svm_model, test_data, decision.values = TRUE)
 svm_decision_values <- attr(predicted_with_decision_values, "decision.values")
-# Na vykonanie ROC analýzy sa extrahujú rozhodovacie hodnoty z modelu SVM. Tieto hodnoty sú potrebné na výpočet ROC krivky, ktorá poskytuje grafické hodnotenie výkonnosti modelu pri rôznych prahových hodnotách. Pomocou atribútu decision.values = TRUE v funkcií predict sa získavajú rozhodovacie hodnoty, ktoré umožňujú zobraziť, ako sa model rozhodol medzi dvoma triedami.
 ```
 
+Na vykonanie ROC analýzy sa extrahujú rozhodovacie hodnoty z modelu SVM. Tieto hodnoty sú potrebné na výpočet ROC krivky, ktorá poskytuje grafické hodnotenie výkonnosti modelu pri rôznych prahových hodnotách. Pomocou atribútu decision.values = TRUE v funkcií predict sa získavajú rozhodovacie hodnoty, ktoré umožňujú zobraziť, ako sa model rozhodol medzi dvoma triedami.
+
 ```{r}
-# Make sure svm_decision_values is a numeric vector
 if (is.matrix(svm_decision_values) && ncol(svm_decision_values) == 2) {
   svm_decision_values <- svm_decision_values[, 2]
 }
-
-# Premenná svm_decision_values ukladá rozhodovacie hodnoty, ktoré predikčný model SVM generuje počas predikcie. V matici rozhodovacích hodnôt sa bežne nachádzajú skóre pre každú triedu. V tomto prípade indexujeme maticu, aby sme získali hodnoty spojené s druhým stĺpcom, ktorý zodpovedá "pozitívnej" triede.
 ``` 
+
+
+Premenná svm_decision_values ukladá rozhodovacie hodnoty, ktoré predikčný model SVM generuje počas predikcie. V matici rozhodovacích hodnôt sa bežne nachádzajú skóre pre každú triedu. V tomto prípade indexujeme maticu, aby sme získali hodnoty spojené s druhým stĺpcom, ktorý zodpovedá "pozitívnej" triede.
 
 ```{r}  
 # ROC Analýza
@@ -440,30 +452,34 @@ plot(roc_response)
 svm_auc_value <- auc(roc_response)
 print(paste("AUC for SVM:", svm_auc_value))
 ```
-# ROC krivka nám ukazuje schopnosť modelu správne klasifikovať prípady ako pozitívne (napr. ofenzívni hráči) alebo negatívne (napr. defenzívni hráči) pre rôzne prahové hodnoty.
+ROC krivka nám ukazuje schopnosť modelu správne klasifikovať prípady ako pozitívne (napr. ofenzívni hráči) alebo negatívne (napr. defenzívni hráči) pre rôzne prahové hodnoty.
 
-# AUC hodnota je plocha pod ROC krivkou a poskytuje sumarizovaný ukazovateľ účinnosti modelu. AUC hodnota blízka k 1 značí vysokú prediktívnu schopnosť modelu, zatiaľ čo hodnota blízko k 0.5 naznačuje výkon, ktorý nie je lepší ako náhodné hádanie.
+AUC hodnota je plocha pod ROC krivkou a poskytuje sumarizovaný ukazovateľ účinnosti modelu. AUC hodnota blízka k 1 značí vysokú prediktívnu schopnosť modelu, zatiaľ čo hodnota blízko k 0.5 naznačuje výkon, ktorý nie je lepší ako náhodné hádanie.
 
 ```{r}
 # Vypočer presnosti predpovedí
 precision <- svm_confusionMatrix$table[2, 2] / (svm_confusionMatrix$table[2, 2] + svm_confusionMatrix$table[1, 2])
 print(paste("Precision:", precision))
-# Precision (Presnosť): Schopnosť modelu, že prípady označené ako pozitívne sú skutočne pozitívne. Vyššia hodnota značí, že keď model označí prípad ako pozitívny, je väčšia šanca, že to je správne.
 ```
+
+Precision (Presnosť): Schopnosť modelu, že prípady označené ako pozitívne sú skutočne pozitívne. Vyššia hodnota značí, že keď model označí prípad ako pozitívny, je väčšia šanca, že to je správne.
 
 ```{r}
 # Vypočet Recall predpovedí
 recall <- svm_confusionMatrix$table[2, 2] / (svm_confusionMatrix$table[2, 2] + svm_confusionMatrix$table[2, 1])
 print(paste("Recall:", recall))
-# Recall (Citlivosť): Schopnosť modelu správne identifikovať pozitívne prípady. Vyššia hodnota naznačuje, že model je lepší v detekcii pozitívnych prípadov.
 ```
+
+Recall (Citlivosť): Schopnosť modelu správne identifikovať pozitívne prípady. Vyššia hodnota naznačuje, že model je lepší v detekcii pozitívnych prípadov.
 
 ```{r}
 # Celkova presnosť modelu
 accuracy <- svm_confusionMatrix$overall['Accuracy']
 print(paste("Accuracy:", accuracy))
-# Presnosť (Accuracy): Proporcia správne klasifikovaných prípadov zo všetkých prípadov. Vyššia hodnota značí lepší celkový výkon modelu.
 ```
+
+Presnosť (Accuracy): Proporcia správne klasifikovaných prípadov zo všetkých prípadov. Vyššia hodnota značí lepší celkový výkon modelu.
+
 
 ```{r}
 # Vypočet pomeru tried
@@ -498,4 +514,159 @@ Počet tried: 2, čo značí, že model rieši binárnu klasifikačnú úlohu.
 Rozdiel je v podstate vo výberu metódy. Klasifikácia je široký termín, ktorý zahŕňa akýkoľvek typ prediktívneho modelovania, ktoré rozdeľuje dáta do preddefinovaných tried alebo kategórií. SVM je špecifický typ klasifikačného modelu, ktorý sa snaží nájsť hyperrovinu (v prípade vysokorozmerných dát nazývanú aj hyperplocha) v priestore, ktorá najlepšie rozdelí dáta na požadované triedy.
 
 
+# Gradient Boosting 
+
+```{r}
+install.packages("gbm")
+library(gbm)
+```
+
+```{r}
+# Priprava dát
+set.seed(123)
+training_indices <- createDataPartition(data$role_oneHot, p = 0.7, list = FALSE)
+train_data <- data[training_indices, ]
+test_data <- data[-training_indices, ]
+```
+
+```{r}
+# Model Gradient Boosting
+gbm_model <- gbm(role_oneHot ~ goals + assists, 
+                 data = train_data, 
+                 distribution = "bernoulli", 
+                 n.trees = 5000, 
+                 interaction.depth = 3, 
+                 shrinkage = 0.01,
+                 cv.folds = 5)
+
+# Výpis dôležitosti premenných a výkonu modelu
+summary(gbm_model)
+```
+Trénujeme Gradient Boosting model s n.trees = 5000 (čo znamená 5000 stromov), interaction.depth = 3 (hĺbka každého stromu je 3) a shrinkage = 0.01 (rychlosť učenia je 0.01). Parametre sú vybrané tak, aby model postupne učil z dát a zlepšoval sa s každým stromom. cv.folds = 5 hovorí, že sa má vykonať 5-násobná krížová validácia počas tréningu.
+
+Graf zobrazuje relatívny vplyv dvoch premenných, goals a assists, v modeli. Relatívna dôležitosť je metrika, ktorá označuje, ako významné sú jednotlivé premenné pri predpovedaní cieľovej premennej.
+Z grafu je zrejmé, že premenná goals má väčší vplyv na model než assists. To znamená, že počet gólov je dôležitejší pre predikciu cieľovej premennej (role_oneHot) než počet asistencií.
+
+```{r}
+# Predikcie na testovacích dátach
+predictions <- predict(gbm_model, test_data, n.trees = 5000, type = "response")
+predicted_class <- if_else(predictions > 0.5, 1, 0)
+```
+
+```{r}
+# Výpočet matice zamenenia a hodnotenie modelu
+conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$role_oneHot))
+print(conf_matrix)
+```
+
+```{r}
+# Predikcie modelu na testovacích dátach
+predictions <- predict(gbm_model, test_data, n.trees = 5000, type = "response")
+
+# Výpočet ROC krivky
+roc_curve <- roc(response = test_data$role_oneHot, predictor = predictions)
+
+# Vykreslenie ROC krivky
+plot(roc_curve, main = "ROC Curve for Gradient Boosting Model")
+abline(a = 0, b = 1, lty = 2, col = "red")  # Pridá diagonálnu referenčnú čiaru
+
+# Výpočet a výpis hodnoty AUC (Area Under the Curve)
+auc_value <- auc(roc_curve)
+print(paste("AUC Value:", auc_value))
+```
+Krivka pre Gradient Boosting je zreteľne nad oboma ostatnými krivkami, čo naznačuje, že tento model má najlepšiu schopnosť rozlišovania. To je potvrdené aj väčším AUC, čo je zvyčajne znakom silného klasifikačného modelu.
+
+Ak má Gradient Boosting najvyššiu AUC, znamená to, že je pravdepodobne najlepší z testovaných modelov.
+SVM a GLM majú podobné ROC krivky a potenciálne podobné AUC hodnoty, takže by boli považované za podobne účinné, aj keď menej účinné než Gradient Boosting.
+Prečo jedna môže byť lepšia:
+
+Gradient Boosting môže byť lepší v týchto dátach, pretože je schopný zachytiť komplexnejšie vzťahy v dátach pomocou kombinácie viacerých slabých prediktívnych modelov.
+
 ## Porovnanie vysledkov
+
+1. model GLM:
+Presnosť je porovnateľná s ostatnými dvoma modelmi, ale nie najlepšia.
+Vyššia špecificita ako Gradient Boosting, ale nižšia ako SVM.
+Stredná citlivosť a Kappa naznačujú priemerné výkony.
+
+2. model SVM:
+Tento model má vysokú špecificitu, čo znamená, že je veľmi dobrý v identifikácii negatívnych prípadov (defenzívni hráči).
+Nízka citlivosť naznačuje, že model má problémy správne klasifikovať pozitívne prípady (ofenzívni hráči).
+Relatívne nízka hodnota Kappa ukazuje na slabú dohodu nad rámec náhodnosti.
+
+3. model Gradient Boosting
+Vyššia presnosť v porovnaní s SVM.
+Vysoká citlivosť značí, že model je efektívny v identifikovaní pozitívnych prípadov.
+Nízka špecificita naznačuje, že model často nesprávne klasifikuje negatívne prípady ako pozitívne.
+Vyššie hodnoty Kappa a Balanced Accuracy ako pri SVM, čo značí lepšie celkové výsledky.
+
+Popis jednotlivych metod:
+
+## Logistická regresia
+
+
+Logistická regresia modeluje pravdepodobnosť výskytu udalosti využitím logistického rozdelenia.
+Vypočíta sa pravdepodobnosť, že cieľová premenná patrí do jednej z kategórií (typicky 0 alebo 1) na základe lineárnej kombinácie vstupných premenných.
+Výsledok je transformovaný pomocou logit funkcie (logistická funkcia), ktorá mapuje akúkoľvek reálnu hodnotu na interval (0,1), čo predstavuje pravdepodobnosť.
+
+Výhody:
+
+Poskytuje pravdepodobnostné výstupy pre predikcie.
+Jednoduchá interpretácia výsledkov.
+Robustná voči šumu a menej náchylná na overfitting pri malých dátových sadách.
+
+Nevýhody:
+
+Predpokladá lineárny vzťah medzi nezávislými premennými a logitom pravdepodobnosti.
+Môže byť menej účinná, ak sú vzťahy medzi premennými nelineárne alebo ak existuje vysoká kolinearita.
+
+## Support Vector Machine (SVM)
+
+SVM hľadá hyperrovinu (alebo sady hyperrovín) v multidimenzionálnom priestore, ktorá najlepšie oddeluje rôzne triedy dát.
+Optimalizuje okraj medzi najbližšími dátovými bodmi rôznych tried, známy ako podporné vektory.
+Môže používať jadrové triky na efektívne mapovanie dát do vyšších rozmerov na nájdenie rozdelovacej hranice pre nelineárne klasifikačné problémy.
+
+Výhody:
+
+Efektívny v komplexných doménach, kde hranice medzi triedami nie sú jasne definované.
+Funguje dobre na menších, čistých dátových sadách.
+Flexibilný vo výbere jadier pre rôzne typy dát.
+
+Nevýhody:
+
+Môže byť náročný na výpočtové zdroje, najmä s veľkým počtom vstupných premenných alebo dátových bodov.
+Náchylný na overfitting, najmä pri nedostatku regulácie alebo pri vysoko dimenzionálnych dátach.
+
+Gradient Boosting
+
+Gradient Boosting je ansámblová technika, ktorá vytvára model ako sériu slabých prediktívnych modelov (väčšinou stromové modely), ktoré sa iteratívne vylepšujú.
+Každý nasledujúci model sa snaží opraviť chyby predchádzajúceho modelu využitím gradientného klesania, optimalizácie založenej na minimalizácii stratovej funkcie.
+
+Výhody:
+
+Veľmi výkonný pre širokú škálu prediktívnych úloh.
+Poskytuje vysokú presnosť a efektivitu.
+Flexibilný vo výbere stratovej funkcie a podpory rôznych typov predikcií (binárne, multiklasové, regresné).
+
+Nevýhody:
+
+Často náchylný na overfitting, pokiaľ nie je správne nastavený (napr. hĺbka stromov, rýchlosť učenia).
+Môže byť časovo náročný na trénovanie, najmä pri veľkých dátových sadách.
+
+Rozdiely medzi 3 modelmi:
+
+Zložitosť modelu: Logistická regresia je najjednoduchšia, zatiaľ čo SVM a Gradient Boosting sú zložitejšie a môžu modelovať zložitejšie vzťahy.
+
+Predpoklady: Logistická regresia má striktnejšie predpoklady o dátach, SVM a Gradient Boosting sú flexibilnejšie voči nelinearitám.
+
+Výkon: Gradient Boosting často dosahuje najlepší výkon na rôznych dátových sadách a problémoch, ale za cenu väčšej náchylnosti na overfitting a vyššej výpočtovej náročnosti. SVM je účinný v situáciách, kde je možné nájsť jasné rozdelenie tried, a logistická regresia je skvelá pre jednoduchšie problémy a rýchle prototypovanie.
+
+
+
+
+
+
+
+Zaver:
+Každý model má svoje silné a slabé stránky v závislosti od povahy údajov a toho, čo je potrebné predpovedať. Gradient Boosting poskytol najlepšiu celkovú presnosť a vyváženú presnosť, ale jeho nízka špecificita môže byť problém v určitých aplikáciách. Na druhej strane, SVM poskytol vynikajúcu špecificitu, ale na úkor citlivosťi, čo môže byť limitujúce, ak je dôležité identifikovať pozitívne prípady.
+
