@@ -11,6 +11,8 @@ Ako dataset sme zvolili štatistiky hráčov z NHL, ktorý je dostupný [tu](htt
 Dataset obsahuje dáta o hráčoch NHL z viacerých sezón
 
 # Načítanie knižníc
+install.packages("glmnet")
+
 
 ```{r}
 library(tidyverse)
@@ -28,7 +30,7 @@ library(e1071) # SVM
 getwd()
 # /Users/danielcok/xcok/4.semester/OZNAL/Zadanie
 # /Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania
-setwd("/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania") # Set the correct path to players_22.csv
+setwd("/Users/danielcok/xcok/4.semester/OZNAL/Zadanie") # Set the correct path to players_22.csv
 data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
 data
 view(data)
@@ -357,6 +359,9 @@ Tento model teda ukazuje, že určité štatistiky (ako počet gólov a plus/min
 
 # Support Vector Machine (SVM)
 
+SVM je špecifický typ klasifikačného modelu, ktorý sa snaží nájsť hyperrovinu v priestore, ktorá najlepšie rozdelí dáta na požadované triedy.
+
+
 ```{r}
 # Limit pre vynechanie stĺpcov s nadmerným počtom chýbajúcich hodnôt
 na_limits <- 0.5 * nrow(data)  
@@ -364,7 +369,7 @@ data <- data[, colSums(is.na(data)) < na_limits]
 data <- data[, sapply(data, function(x) length(unique(x)) > 1)]  
 data[] <- lapply(data, function(x) if(is.character(x)) factor(x) else x)  
 ```
-1. riadok určuje prahovú hodnotu pre odstránenie stĺpcov s veľkým počtom chýbajúcich hodnôt (NA). Násobením 0.5 počtom riadkov (nrow(data)) nastavujeme prah, že akýkoľvek stĺpec s viac ako 50% chýbajúcich hodnôt bude odstránený z datasetu.
+1.Násobením 0.5 počtom riadkov (nrow(data)) nastavujeme prah, že akýkoľvek stĺpec s viac ako 50% chýbajúcich hodnôt bude odstránený z datasetu.
 
 V 2. riadku sa odstraňujú stĺpce, ktoré prekračujú práve definovanú prahovú hodnotu chýbajúcich hodnôt. Funkcia colSums(is.na(data)) vypočíta počet chýbajúcich hodnôt (NA) v každom stĺpci, a ten sa potom porovná s hodnotou na_limits.
 
@@ -409,7 +414,6 @@ Trénovanie modelu SVM (Support Vector Machine) s lineárnym jadrom. Funkcia svm
 ```{r}
 # Predpovedanie na základe testovacích dat
 svm_predictions_raw <- predict(svm_model, test_data[, -which(names(test_data) == "role_oneHot")])
-# Ensure predictions have the same factor levels
 svm_predictions <- factor(svm_predictions_raw, levels = levels(test_data$role_oneHot))
 ```
 
@@ -449,8 +453,6 @@ svm_auc_value <- auc(roc_response)
 print(paste("AUC for SVM:", svm_auc_value))
 ```
 ROC krivka nám ukazuje schopnosť modelu správne klasifikovať prípady ako pozitívne (napr. ofenzívni hráči) alebo negatívne (napr. defenzívni hráči) pre rôzne prahové hodnoty.
-
-AUC hodnota je plocha pod ROC krivkou a poskytuje sumarizovaný ukazovateľ účinnosti modelu. AUC hodnota blízka k 1 značí vysokú prediktívnu schopnosť modelu, zatiaľ čo hodnota blízko k 0.5 naznačuje výkon, ktorý nie je lepší ako náhodné hádanie.
 
 ```{r}
 # Vypočer presnosti predpovedí
@@ -504,13 +506,14 @@ Počet podporných vektorov (Support Vectors): 12 576, čo sú konkrétne príkl
 Počet tried: 2, čo značí, že model rieši binárnu klasifikačnú úlohu.
 Úrovne: 0 a 1, čo sú možné kategórie cieľovej premennej.
 
-
-## Rozdiel medzi Klasifikaciou a SVM 
-
-Rozdiel je v podstate vo výberu metódy. Klasifikácia je široký termín, ktorý zahŕňa akýkoľvek typ prediktívneho modelovania, ktoré rozdeľuje dáta do preddefinovaných tried alebo kategórií. SVM je špecifický typ klasifikačného modelu, ktorý sa snaží nájsť hyperrovinu (v prípade vysokorozmerných dát nazývanú aj hyperplocha) v priestore, ktorá najlepšie rozdelí dáta na požadované triedy.
-
-
 # Gradient Boosting 
+
+Gradient Boosting
+Ako funguje:
+
+Gradient Boosting je ansámblová technika, ktorá vytvára model ako sériu slabých prediktívnych modelov (väčšinou stromové modely), ktoré sa iteratívne vylepšujú.
+Každý nasledujúci model sa snaží opraviť chyby predchádzajúceho modelu využitím gradientného klesania, optimalizácie založenej na minimalizácii stratovej funkcie.
+
 
 ```{r}
 install.packages("gbm")
@@ -555,6 +558,14 @@ conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(test_data$r
 print(conf_matrix)
 ```
 
+Sensitivity (Citlivosť):
+
+Táto metrika, tiež známa ako pravdivo pozitívna miera (True Positive Rate alebo Recall), hovorí o schopnosti modelu správne identifikovať skutočné pozitívne prípady.
+
+Specificity (Špecificita):
+Táto metrika, tiež známa ako pravdivo negatívna miera (True Negative Rate), hovorí o schopnosti modelu správne identifikovať skutočné negatívne prípady.
+
+
 ```{r}
 # Predikcie modelu na testovacích dátach
 predictions <- predict(gbm_model, test_data, n.trees = 5000, type = "response")
@@ -572,7 +583,7 @@ print(paste("AUC Value:", auc_value))
 ```
 Krivka pre Gradient Boosting je zreteľne nad oboma ostatnými krivkami, čo naznačuje, že tento model má najlepšiu schopnosť rozlišovania. To je potvrdené aj väčším AUC, čo je zvyčajne znakom silného klasifikačného modelu.
 
-Ak má Gradient Boosting najvyššiu AUC, znamená to, že je pravdepodobne najlepší z testovaných modelov.
+Gradient Boosting ma najvyššiu AUC, znamená to, že je pravdepodobne najlepší z testovaných modelov.
 SVM a GLM majú podobné ROC krivky a potenciálne podobné AUC hodnoty, takže by boli považované za podobne účinné, aj keď menej účinné než Gradient Boosting.
 Prečo jedna môže byť lepšia:
 
