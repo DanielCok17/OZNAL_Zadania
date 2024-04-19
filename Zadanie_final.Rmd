@@ -594,6 +594,10 @@ Gradient Boosting môže byť lepší v týchto dátach, pretože je schopný za
 # Lasso
 Pre Lasso regresiu potrebujeme načítať knižnicu `glmnet`, ktorá obsahuje funkcie pre Lasso regresiu `glmnet(...)`. Tento krok sme pridali na začiatku, kde načítavame všetky potrebné knižnice.
 
+Čo sa týka hypotéz tak budeme uvažovať rovnaké hypotézy ako pri lineárnej regresií.
+
+Hlavný rozdiel medzi lasso regresiou a lineárnou regresiou je pridanie tzv. penalty term. Silu tohto penalty term ovláda lambda a v určitých prípadoch môže niektoré koeficienty "zahodiť" (budú 0).
+
 Ako dáta použijeme `train` a `test` dáta, ktoré boli vytvorené z filtered_data, čiže ofenzívnych a defenzívnych hráčov rovnako ako v prípade lm modelu.
 
 Zadefinovanie `x` a `y` resp. predictors a response resp. dependent a independent premennych.
@@ -628,7 +632,7 @@ min_lambda
 ```
 Interpretácia modela:
 
-- **Lambda** - tzv. tuning parameter
+- **Lambda** - tzv. tuning parameter (ovláda silu penalty term), ak je lambda 0 tak lasso regresia je rovnaká ako lineárna, ak je velmi vysoká tak penalty term je tiež vysoký a koeficienty môžu byť 0.
 - **Index** - Index lambda hodnotz, ktora bola použitá
 - **Measure** - MSE (Mean square error)
 - **SE** - Standardná chyba pre MSE
