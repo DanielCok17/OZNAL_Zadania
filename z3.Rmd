@@ -1,0 +1,239 @@
+---
+title: "OZNAL - zadanie 3"
+author: "Daniel Cok, Jakub Abrahoim"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+Ako dataset sme zvolili štatistiky hráčov z NHL, ktorý je dostupný [tu](https://www.kaggle.com/datasets/alexbenzik/nhl-players-statistics?resource=download&select=NHL_Players_Statistics.csv).
+Dataset obsahuje dáta o hráčoch NHL z viacerých sezón
+
+# Načítanie knižníc
+install.packages("glmnet")
+
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(data.table) # Pre %like% operátor
+library(caret) # Pre confusionMatrix
+library(pROC)
+library(glmnet) # Lasso
+library(e1071) # SVM
+```
+
+# Načítanie dát
+
+```{r}
+getwd()
+# /Users/danielcok/xcok/4.semester/OZNAL/Zadanie
+# /Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania
+setwd("/Users/jakub/Documents/FIIT/OZNAL/2024/OZNAL_Zadania") # Set the correct path to players_22.csv
+data <- read_delim("NHL_Players_Statistics.csv", col_names = TRUE, num_threads = 4, delim = ';');
+data
+view(data)
+```
+
+# Úprava dát
+
+Ako prvé sme upravili názvy stĺpcov, aby boli konzistentné nakoľko niektoré boli all caps a niektoré nie.
+Taktiež sme niektoré premenovali, aby boli jasnejšie.
+
+```{r}
+colnames(data) # Pôvodné mená stĺpcov
+
+new_colnames <- c("player_name", "date_of_birth", "season_year", "season", "team", "games_played", "goals", "assists", "points", "plus_minus_ratings", "penalty_minutes",
+                "shots_on_goal", "shooting_percentage", "power_play_goals", "power_play_assists", "short_goals", "short_assists", "game_winning_goals", "game_tying_goals",
+                "time_on_ice_per_game", "production", "number", "games_started", "wins", "losses", "ties", "overtime_losses", "goals_against", "goals_against_average", "shots_against", "saves",
+                "save_percentage", "shutouts", "position", "height", "weight", "bmi", "place_of_birth", "age", "experience")
+
+colnames(data) <- new_colnames
+
+colnames(data) # Nové mená stĺpcov
+```
+
+Stĺpec `date_of_birth` rozdelíme na 3 stĺpce `Year`, `Month` a `Day` nakoľko to boli 3 hodnoty v jednej bunke (zachovanie princípu tidy dát).
+
+```{r}
+data %<>% separate("date_of_birth", into = c("Year", "Month", "Day"), sep = "-")
+```
+
+Stĺpec `place_of_birth` rozdelíme na 2 stĺpce `city` a `state` nakoľko to boli 2 hodnoty v jednej bunke (zachovanie princípu tidy dát).
+Ak mal hráč iba mesto, tak `state` bude automaticky `NA`.
+
+```{r}
+data %<>% separate("place_of_birth", into = c("city", "state"), sep = ",")
+```
+
+Odstránenie apostrofov z hodnôt v stĺpci `season`.
+Dáta v tomto sĺpci boli formátované ako '<číslo>-'<číslo>.
+Apostrofy nám prišli zbytočné a tak sme ich odstránili pre lepšiu čitateľnosť.
+
+```{r}
+data$season <- gsub("'", "", data$season) # Funkcia gsub funguje podobne ako sub ale nahradí všetky výskyty
+```
+
+Odstránenie invalid values zo sĺpcov nakoľko pri analýze datasetu sme objavili, že niektoré bunky v daných sĺpcoch obsahujú `Invalid Number`.
+Nahradíme ich za `0`.
+
+```{r}
+data$game_tying_goals[is.na(data$game_tying_goals)] <- 0
+data$number[is.na(data$number)] <- 0
+data$goals[is.na(data$goals)] <- 0
+data$assists[is.na(data$assists)] <- 0
+data$points[is.na(data$points)] <- 0
+data$plus_minus_ratings[is.na(data$plus_minus_ratings)] <- 0
+data$penalty_minutes[is.na(data$penalty_minutes)] <- 0
+data$shots_on_goal[is.na(data$shots_on_goal)] <- 0
+data$shooting_percentage[is.na(data$shooting_percentage)] <- 0
+data$power_play_goals[is.na(data$power_play_goals)] <- 0
+data$power_play_assists[is.na(data$power_play_assists)] <- 0
+data$short_goals[is.na(data$short_goals)] <- 0
+data$short_assists[is.na(data$short_assists)] <- 0
+data$game_winning_goals[is.na(data$game_winning_goals)] <- 0
+```
+
+Pridelenie role podľa pozície hráča.
+- Za ofenzívnych hráčov budeme považovať hráčov na pozíciách `Right_wing`, `Left_wing`, `Center` a `Forward`.
+- Za defenzívnych hráčov budeme považovať hráčov na pozíciách `Defence`.
+- Brankárov budeme považovať za brankárov (`Goaltender`).
+
+```{r}
+# Získame unikátne hodnoty z pozícií hráčov
+unique(data$position)
+data %<>% mutate(
+  role = case_when(
+    position %like% "Right_wing|Left_wing|Center|Forward" ~ "offensive",
+    position %like% "Defence" ~ "defensive",
+    position %like% "Goaltender" ~ "goalie",
+    .default = "goalie"
+  )
+)
+```
+
+Novy stlpec na zaklade golov
+```{r}
+data %<>% mutate (
+  shooter_type = case_when(
+    goals >= 0 & goals < 15 ~ "weak_shooter",
+    goals >= 15 & goals < 30 ~ "average_shooter",
+    goals >= 30 ~ "good_shooter"
+  )
+)
+
+# Vypocat pravdepodobnost jednotlivych typov strelca
+weak_shooter_probability <- nrow(data %>% filter(shooter_type == "weak_shooter")) / nrow(data)
+average_shooter_probability <- nrow(data %>% filter(shooter_type == "average_shooter")) / nrow(data)
+good_shooter_probability <- nrow(data %>% filter(shooter_type == "good_shooter")) / nrow(data)
+
+weak_shooter_probability
+average_shooter_probability
+good_shooter_probability
+```
+
+Novy stlpec na zaklade asistencii
+```{r}
+data %<>% mutate (
+  assist_type = case_when(
+    assists >= 0 & assists < 15 ~ "weak_assister",
+    assists >= 15 & assists < 30 ~ "average_assister",
+    assists >= 30 ~ "good_assister"
+  )
+)
+
+# Vypocat pravdepodobnost jednotlivych typov asistenta
+weak_assister_probability <- nrow(data %>% filter(assist_type == "weak_assister")) / nrow(data)
+average_assister_probability <- nrow(data %>% filter(assist_type == "average_assister")) / nrow(data)
+good_assister_probability <- nrow(data %>% filter(assist_type == "good_assister")) / nrow(data)
+
+weak_assister_probability
+average_assister_probability
+good_assister_probability
+```
+
+Novy stlpec na zaklade veku
+```{r}
+data %<>% mutate (
+  age_type = case_when(
+    age >= 0 & age < 25 ~ "young",
+    age >= 25 & age < 35 ~ "middle_age",
+    age >= 35 ~ "old"
+  )
+)
+
+# Vypocat pravdepodobnost jednotlivych typov veku
+young_probability <- nrow(data %>% filter(age_type == "young")) / nrow(data)
+middle_age_probability <- nrow(data %>% filter(age_type == "middle_age")) / nrow(data)
+old_probability <- nrow(data %>% filter(age_type == "old")) / nrow(data)
+
+young_probability
+middle_age_probability
+old_probability
+```
+
+Novy stlpec na zaklade vysky
+```{r}
+data %<>% mutate (
+  height_type = case_when(
+    height >= 0 & height < 180 ~ "short",
+    height >= 180 & height < 190 ~ "average_height",
+    height >= 190 ~ "tall"
+  )
+)
+
+# Vypocat pravdepodobnost jednotlivych typov vysky
+short_probability <- nrow(data %>% filter(height_type == "short")) / nrow(data)
+average_height_probability <- nrow(data %>% filter(height_type == "average_height")) / nrow(data)
+tall_probability <- nrow(data %>% filter(height_type == "tall")) / nrow(data)
+
+short_probability
+average_height_probability
+tall_probability
+```
+
+Novy stlpec na zaklade vahy
+```{r}
+data %<>% mutate (
+  weight_type = case_when(
+    weight >= 0 & weight < 80 ~ "light",
+    weight >= 80 & weight < 100 ~ "average_weight",
+    weight >= 100 ~ "heavy"
+  )
+)
+
+# Vypocat pravdepodobnost jednotlivych typov vahy
+light_probability <- nrow(data %>% filter(weight_type == "light")) / nrow(data)
+average_weight_probability <- nrow(data %>% filter(weight_type == "average_weight")) / nrow(data)
+heavy_probability <- nrow(data %>% filter(weight_type == "heavy")) / nrow(data)
+
+light_probability
+average_weight_probability
+heavy_probability
+```
+
+Novy stlpec pre skusenosti
+```{r}
+data %<>% mutate (
+  experience_type = case_when(
+    experience >= 0 & experience < 10 ~ "rookie",
+    experience >= 10 & experience < 20 ~ "veteran",
+    experience >= 20 ~ "legend"
+  )
+)
+
+# Vypocat pravdepodobnost jednotlivych typov skusenosti
+rookie_probability <- nrow(data %>% filter(experience_type == "rookie")) / nrow(data)
+veteran_probability <- nrow(data %>% filter(experience_type == "veteran")) / nrow(data)
+legend_probability <- nrow(data %>% filter(experience_type == "legend")) / nrow(data)
+
+rookie_probability
+veteran_probability
+legend_probability
+```
+
+Zobrazenie dát po úprave.
+```{r}
+view(data)
+```
