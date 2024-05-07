@@ -106,11 +106,16 @@ unique(data$position)
 data %<>% mutate(
   role = case_when(
     position %like% "Right_wing|Left_wing|Center|Forward" ~ "offensive",
-    position %like% "Defence" ~ "defensive",
-    position %like% "Goaltender" ~ "goalie",
-    .default = "goalie"
+    position %like% "Defence|Goaltender" ~ "defensive",
+    .default = "defensive"
   )
 )
+
+offensive_probability <- nrow(data %>% filter (role == "offensive")) / nrow(data)
+defensive_probability <- nrow(data %>% filter (role == "defensive")) / nrow(data)
+
+offensive_probability
+defensive_probability
 ```
 
 Novy stlpec na zaklade golov
@@ -118,18 +123,15 @@ Novy stlpec na zaklade golov
 data %<>% mutate (
   shooter_type = case_when(
     goals >= 0 & goals < 15 ~ "weak_shooter",
-    goals >= 15 & goals < 30 ~ "average_shooter",
-    goals >= 30 ~ "good_shooter"
+    goals >= 15 ~ "good_shooter"
   )
 )
 
 # Vypocat pravdepodobnost jednotlivych typov strelca
 weak_shooter_probability <- nrow(data %>% filter(shooter_type == "weak_shooter")) / nrow(data)
-average_shooter_probability <- nrow(data %>% filter(shooter_type == "average_shooter")) / nrow(data)
 good_shooter_probability <- nrow(data %>% filter(shooter_type == "good_shooter")) / nrow(data)
 
 weak_shooter_probability
-average_shooter_probability
 good_shooter_probability
 ```
 
@@ -137,19 +139,16 @@ Novy stlpec na zaklade asistencii
 ```{r}
 data %<>% mutate (
   assist_type = case_when(
-    assists >= 0 & assists < 15 ~ "weak_assister",
-    assists >= 15 & assists < 30 ~ "average_assister",
-    assists >= 30 ~ "good_assister"
+    assists >= 0 & assists < 25 ~ "weak_assister",
+    assists >= 25 ~ "good_assister"
   )
 )
 
 # Vypocat pravdepodobnost jednotlivych typov asistenta
 weak_assister_probability <- nrow(data %>% filter(assist_type == "weak_assister")) / nrow(data)
-average_assister_probability <- nrow(data %>% filter(assist_type == "average_assister")) / nrow(data)
 good_assister_probability <- nrow(data %>% filter(assist_type == "good_assister")) / nrow(data)
 
 weak_assister_probability
-average_assister_probability
 good_assister_probability
 ```
 
@@ -157,19 +156,16 @@ Novy stlpec na zaklade veku
 ```{r}
 data %<>% mutate (
   age_type = case_when(
-    age >= 0 & age < 25 ~ "young",
-    age >= 25 & age < 35 ~ "middle_age",
-    age >= 35 ~ "old"
+    age >= 0 & age < 30 ~ "young",
+    age >= 30 ~ "old"
   )
 )
 
 # Vypocat pravdepodobnost jednotlivych typov veku
 young_probability <- nrow(data %>% filter(age_type == "young")) / nrow(data)
-middle_age_probability <- nrow(data %>% filter(age_type == "middle_age")) / nrow(data)
 old_probability <- nrow(data %>% filter(age_type == "old")) / nrow(data)
 
 young_probability
-middle_age_probability
 old_probability
 ```
 
@@ -177,19 +173,16 @@ Novy stlpec na zaklade vysky
 ```{r}
 data %<>% mutate (
   height_type = case_when(
-    height >= 0 & height < 180 ~ "short",
-    height >= 180 & height < 190 ~ "average_height",
-    height >= 190 ~ "tall"
+    height >= 0 & height < 185 ~ "short",
+    height >= 185 ~ "tall"
   )
 )
 
 # Vypocat pravdepodobnost jednotlivych typov vysky
 short_probability <- nrow(data %>% filter(height_type == "short")) / nrow(data)
-average_height_probability <- nrow(data %>% filter(height_type == "average_height")) / nrow(data)
 tall_probability <- nrow(data %>% filter(height_type == "tall")) / nrow(data)
 
 short_probability
-average_height_probability
 tall_probability
 ```
 
@@ -197,19 +190,16 @@ Novy stlpec na zaklade vahy
 ```{r}
 data %<>% mutate (
   weight_type = case_when(
-    weight >= 0 & weight < 80 ~ "light",
-    weight >= 80 & weight < 100 ~ "average_weight",
-    weight >= 100 ~ "heavy"
+    weight >= 0 & weight < 90 ~ "light",
+    weight >= 90 ~ "heavy"
   )
 )
 
 # Vypocat pravdepodobnost jednotlivych typov vahy
 light_probability <- nrow(data %>% filter(weight_type == "light")) / nrow(data)
-average_weight_probability <- nrow(data %>% filter(weight_type == "average_weight")) / nrow(data)
 heavy_probability <- nrow(data %>% filter(weight_type == "heavy")) / nrow(data)
 
 light_probability
-average_weight_probability
 heavy_probability
 ```
 
@@ -218,18 +208,15 @@ Novy stlpec pre skusenosti
 data %<>% mutate (
   experience_type = case_when(
     experience >= 0 & experience < 10 ~ "rookie",
-    experience >= 10 & experience < 20 ~ "veteran",
-    experience >= 20 ~ "legend"
+    experience >= 10 ~ "veteran"
   )
 )
 
 # Vypocat pravdepodobnost jednotlivych typov skusenosti
 rookie_probability <- nrow(data %>% filter(experience_type == "rookie")) / nrow(data)
-veteran_probability <- nrow(data %>% filter(experience_type == "veteran")) / nrow(data)
 legend_probability <- nrow(data %>% filter(experience_type == "legend")) / nrow(data)
 
 rookie_probability
-veteran_probability
 legend_probability
 ```
 
